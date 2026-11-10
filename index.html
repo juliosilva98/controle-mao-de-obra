@@ -135,6 +135,14 @@ main{min-width:0;padding-block:28px 64px;padding-left:max(28px,env(safe-area-ins
 .check input{width:18px;height:18px;accent-color:var(--accent)}
 .grade{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(200px,1fr))}
 .tab-wrap{overflow-x:auto;border:1px solid var(--line);border-radius:var(--r);background:var(--surface)}
+/* Lista de requisições: tabela no computador, cartões no celular */
+.cards-req{display:none;gap:10px}
+.card-req{display:block;padding:12px 14px;border:1px solid var(--line);border-radius:var(--r);background:var(--surface);color:inherit;text-decoration:none}
+.card-req .l1,.card-req .l3{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
+.card-req .l2{margin:6px 0;font-weight:600;overflow-wrap:anywhere}
+.card-req .l3{font-size:.85rem;color:var(--muted)}
+.cards-req .rodape-c{font-size:.85rem;color:var(--muted);padding:2px 4px}
+@media (max-width:640px){.lista-req .tab-wrap{display:none}.lista-req .cards-req{display:grid}}
 table.tab{width:100%;border-collapse:collapse;font-size:.9rem}
 .tab th{font-size:.72rem;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:600;text-align:left;padding:10px 12px;border-bottom:1px solid var(--line);background:var(--surface-2);white-space:nowrap}
 .tab td{padding:10px 12px;border-bottom:1px solid var(--line);vertical-align:middle}
@@ -932,7 +940,14 @@ async function vRequisicoes(){
     if (f.minhas) rows = rows.filter(r => r.supervisor_id === ME.id);
     atual = rows;
     const adm = veValores(), tot = rows.filter(r => r.status !== 'CANCELADA');
-    $('#r-lista').innerHTML = rows.length ? `<div class="tab-wrap"><table class="tab"><thead><tr><th>Nº</th><th>Data</th><th>Turno</th><th>Navio</th><th>Armazém</th><th class="num">Trab.</th>${adm ? '<th class="num">Total</th>' : ''}<th>Supervisor</th><th>Situação</th></tr></thead><tbody>
+    const cartoes = `<div class="cards-req">${rows.map(r => `<a class="card-req" href="#req-${r.id}">
+        <div class="l1"><span class="reqnum">${reqNum(r.id)}</span><span><span class="pill ${r.status}">${STATUS[r.status]}</span>${r.em_fechamento ? ' <span class="pill CONFERIDO">Fechada</span>' : ''}</span></div>
+        <div class="l2">${esc(r.navio)}${r.viagem ? ` <span class="muted" style="font-weight:400">· ${esc(r.viagem)}</span>` : ''}</div>
+        <div class="l3"><span>${fdata(r.data)} ${DIAS[dow(r.data)].slice(0, 3)} · <span class="turno">${esc(r.turno)}</span>${r.tipo_dia === 'DOM_FER' ? ' <span class="tag DOM_FER">Dom/fer</span>' : ''}</span><span>${esc(r.armazem)}</span></div>
+        <div class="l3" style="margin-top:4px"><span>${r.qtd_trabalhadores} trab. · ${esc(r.supervisor)}</span>${adm ? `<b style="color:var(--ink)">${brl(r.valor_total)}</b>` : ''}</div></a>`).join('')}
+      <div class="rodape-c">${n0(rows.length)} requisições · ${n0(tot.reduce((s, r) => s + r.qtd_trabalhadores, 0))} trabalhadores${adm ? ' · ' + brl(tot.reduce((s, r) => s + Number(r.valor_total || 0), 0)) : ''} (canceladas fora dos totais)</div></div>`;
+    $('#r-lista').classList.add('lista-req');
+    $('#r-lista').innerHTML = rows.length ? cartoes + `<div class="tab-wrap"><table class="tab"><thead><tr><th>Nº</th><th>Data</th><th>Turno</th><th>Navio</th><th>Armazém</th><th class="num">Trab.</th>${adm ? '<th class="num">Total</th>' : ''}<th>Supervisor</th><th>Situação</th></tr></thead><tbody>
       ${rows.map(r => `<tr class="click" data-id="${r.id}"><td><a class="reqnum" href="#req-${r.id}">${reqNum(r.id)}</a></td>
         <td style="white-space:nowrap">${fdata(r.data)} <span class="muted" style="font-size:.8rem">${DIAS[dow(r.data)].slice(0, 3)}</span>${r.tipo_dia === 'DOM_FER' ? ' <span class="tag DOM_FER">Dom/fer</span>' : ''}</td>
         <td><span class="turno">${esc(r.turno)}</span></td><td>${esc(r.navio)}${r.viagem ? ` <span class="muted">· ${esc(r.viagem)}</span>` : ''}</td><td>${esc(r.armazem)}</td>
