@@ -18,7 +18,8 @@
   --f-display:"IBM Plex Sans Condensed","Arial Narrow",system-ui,sans-serif;
   --f-body:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
   --f-mono:"IBM Plex Mono",ui-monospace,"SFMono-Regular",Consolas,monospace;
-  --r:8px;
+  --r:12px;
+  --shadow-sm:0 1px 2px rgba(16,34,49,.05),0 2px 8px rgba(16,34,49,.05);
 }
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
   --bg:#0C151E; --surface:#13202D; --surface-2:#1A2A39; --ink:#E4ECF2; --muted:#93A5B5; --line:#253848;
@@ -26,14 +27,14 @@
   --signal:#EFA24E; --signal-soft:#3B2915;
   --ok:#5CC48A; --ok-soft:#14321F; --bad:#F2857B; --bad-soft:#3C1A17;
   --nav:#070F17; --nav-ink:#AFC1D1; --nav-dim:#6A8093; --nav-hi:#13283A;
-  --shadow:0 1px 2px rgba(0,0,0,.3),0 8px 24px rgba(0,0,0,.35); color-scheme:dark}}
+  --shadow:0 1px 2px rgba(0,0,0,.3),0 8px 24px rgba(0,0,0,.35); --shadow-sm:0 1px 2px rgba(0,0,0,.25); color-scheme:dark}}
 :root[data-theme="dark"]{
   --bg:#0C151E; --surface:#13202D; --surface-2:#1A2A39; --ink:#E4ECF2; --muted:#93A5B5; --line:#253848;
   --accent:#43B4C0; --accent-ink:#03232A; --accent-soft:#103940;
   --signal:#EFA24E; --signal-soft:#3B2915;
   --ok:#5CC48A; --ok-soft:#14321F; --bad:#F2857B; --bad-soft:#3C1A17;
   --nav:#070F17; --nav-ink:#AFC1D1; --nav-dim:#6A8093; --nav-hi:#13283A;
-  --shadow:0 1px 2px rgba(0,0,0,.3),0 8px 24px rgba(0,0,0,.35); color-scheme:dark}
+  --shadow:0 1px 2px rgba(0,0,0,.3),0 8px 24px rgba(0,0,0,.35); --shadow-sm:0 1px 2px rgba(0,0,0,.25); color-scheme:dark}
 
 *{box-sizing:border-box}
 html,body{height:100%}
@@ -51,11 +52,14 @@ button,input,select,textarea{font:inherit;color:inherit}
 .rot{font-size:.72rem;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:600}
 
 /* ---------- Login ---------- */
-.login{min-height:100%;display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr)}
-/* Foto de fundo do login (arquivo fundo-login.jpg ao lado do index.html); escurecida embaixo para o texto ler bem */
-.login-marca{background:linear-gradient(to top,rgba(9,22,33,.94) 0%,rgba(9,22,33,.72) 42%,rgba(9,22,33,.12) 78%,rgba(9,22,33,0) 100%),url('fundo-login.jpg') center 35%/cover no-repeat,var(--nav);
-  color:var(--nav-ink);display:flex;flex-direction:column;justify-content:flex-end;gap:32px;min-height:100vh;
-  padding-block:48px;padding-left:max(40px,env(safe-area-inset-left,0px));padding-right:40px}
+/* Foto de fundo do login (arquivo fundo-login.jpg ao lado do index.html) ocupando a tela inteira;
+   escurecida embaixo e nas laterais para o texto ler bem. O formulário fica num cartão por cima da foto. */
+.login{min-height:100vh;min-height:100dvh;display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);
+  background:linear-gradient(to top,rgba(9,22,33,.92) 0%,rgba(9,22,33,.55) 38%,rgba(9,22,33,0) 72%),
+    linear-gradient(to right,rgba(9,22,33,.45) 0%,rgba(9,22,33,0) 45%,rgba(9,22,33,0) 60%,rgba(9,22,33,.4) 100%),
+    url('fundo-login.jpg') center 30%/cover no-repeat,var(--nav)}
+.login-marca{color:var(--nav-ink);display:flex;flex-direction:column;justify-content:flex-end;gap:32px;
+  padding-block:48px;padding-left:max(48px,env(safe-area-inset-left,0px));padding-right:40px}
 .login-marca p,.login-marca h1{text-shadow:0 1px 3px rgba(0,0,0,.5)}
 .login-marca h1{color:#fff;font-size:clamp(2rem,4vw,3rem);font-weight:700;max-width:12ch}
 .login-marca p{max-width:42ch;color:var(--nav-ink)}
@@ -66,15 +70,23 @@ button,input,select,textarea{font:inherit;color:inherit}
 .dia-op .doze{display:grid;grid-template-columns:1fr 1fr;gap:3px}
 .dia-op .doze span{padding:6px 8px;font:500 .8rem var(--f-mono);border:1px dashed #36556D;border-radius:4px;text-align:center;color:var(--nav-ink)}
 .login-form{display:flex;align-items:center;justify-content:center;padding-block:40px;padding-left:24px;padding-right:max(24px,env(safe-area-inset-right,0px))}
-.login-form form{width:100%;max-width:360px;display:grid;gap:16px}
+.login-form form{width:100%;max-width:380px;display:grid;gap:16px;padding:32px 30px;border-radius:16px;
+  background:var(--surface);background:color-mix(in srgb,var(--surface) 90%,transparent);
+  -webkit-backdrop-filter:blur(14px) saturate(1.2);backdrop-filter:blur(14px) saturate(1.2);
+  border:1px solid rgba(255,255,255,.35);box-shadow:0 2px 6px rgba(0,0,0,.12),0 24px 60px rgba(0,0,0,.35)}
+.login-form form h2{font-size:1.5rem}
+.login-form .btn.primario{padding:12px 14px;font-size:1rem}
 .demo-box{border:1px solid var(--line);border-radius:var(--r);padding:14px;display:grid;gap:10px;background:var(--surface)}
 .demo-box .linha{display:flex;gap:8px;flex-wrap:wrap}
 @media (max-width:820px){
-  .login{grid-template-columns:1fr}
-  .login-marca{min-height:0;padding-top:130px;padding-bottom:20px;background-position:center,center 30%,center;padding-left:max(20px,env(safe-area-inset-left,0px));padding-right:max(20px,env(safe-area-inset-right,0px));gap:12px}
+  .login{grid-template-columns:1fr;grid-template-rows:auto 1fr;
+    background:linear-gradient(to bottom,rgba(9,22,33,0) 0%,rgba(9,22,33,.35) 30%,rgba(9,22,33,.85) 60%,rgba(9,22,33,.95) 100%),
+      url('fundo-login.jpg') center top/auto 62vh no-repeat,var(--nav)}
+  .login-marca{padding-top:max(150px,26vh);padding-bottom:16px;padding-left:max(20px,env(safe-area-inset-left,0px));padding-right:max(20px,env(safe-area-inset-right,0px));gap:12px}
   .login-marca h1{font-size:1.6rem;max-width:none}
   .login-marca p,.login-marca .dia-op{display:none}
-  .login-form{padding-left:max(20px,env(safe-area-inset-left,0px));padding-right:max(20px,env(safe-area-inset-right,0px))}
+  .login-form{align-items:flex-start;padding-top:4px;padding-bottom:max(24px,env(safe-area-inset-bottom,0px));padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+  .login-form form{padding:24px 20px}
 }
 
 /* ---------- Shell ---------- */
@@ -247,6 +259,58 @@ table.tab{width:100%;border-collapse:collapse;font-size:.9rem}
 .toast.erro-t{background:var(--bad);color:#fff}
 .dif{font-size:.8rem;color:var(--muted)}
 .dif b{color:var(--ink);font-weight:500}
+
+/* ---------- Acabamento visual (só aparência; não muda funcionamento) ---------- */
+body{background:radial-gradient(1200px 600px at 100% -10%,var(--accent-soft),transparent 60%) fixed,var(--bg)}
+/* Menu lateral */
+.nav{background:linear-gradient(180deg,#123049 0%,var(--nav) 55%);border-right:1px solid rgba(255,255,255,.04)}
+.nav .marca{display:flex;flex-direction:column;gap:2px;padding:6px 10px 20px;margin-bottom:6px;border-bottom:1px solid rgba(255,255,255,.07)}
+.nav .marca::before{content:"SEATRADE";font:600 .66rem var(--f-body);letter-spacing:.32em;color:#6FCAD4}
+.nav a{display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:8px;transition:background .15s,color .15s}
+.nav a::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor;opacity:.35;flex:none}
+.nav a.ativo{background:var(--accent);color:#fff;box-shadow:0 4px 14px rgba(10,108,120,.35)}
+.nav a.ativo::before{opacity:1;background:#fff}
+.nav .rodape{border-top-color:rgba(255,255,255,.08)}
+.nav .rodape button{border-radius:8px;transition:border-color .15s,background .15s}
+.nav .rodape button:hover{background:rgba(255,255,255,.05)}
+.topo{box-shadow:0 2px 10px rgba(0,0,0,.18)}
+/* Títulos das páginas */
+.cab h1{font-size:2rem;letter-spacing:0}
+@media (max-width:900px){.cab h1{font-size:1.5rem}}
+/* Cartões e painéis */
+.painel,.kpi,.tab-wrap,.card-req{border-color:color-mix(in srgb,var(--line) 70%,transparent);box-shadow:var(--shadow-sm)}
+.painel{padding:20px 22px}
+.painel>h2,.painel .cab-p h2{font-size:1.15rem}
+.kpi{padding:16px 18px;position:relative;overflow:hidden}
+.kpi::before{content:"";position:absolute;inset:0 auto 0 0;width:3px;background:var(--accent);opacity:.7}
+.kpi.alerta::before{background:var(--signal);opacity:1}
+.kpi b{font-size:clamp(1.15rem,1.5vw,1.45rem);white-space:nowrap;overflow-wrap:normal}
+.kpis{grid-template-columns:repeat(auto-fit,minmax(160px,1fr))}
+.card-req{transition:box-shadow .15s,transform .15s}
+.card-req:active{transform:scale(.99)}
+/* Botões e campos */
+.btn{border-radius:8px;transition:background .15s,border-color .15s,box-shadow .15s,filter .15s}
+.btn:hover{border-color:var(--accent);color:var(--accent)}
+.btn.primario{box-shadow:0 2px 8px rgba(10,108,120,.25)}
+.btn.primario:hover{color:var(--accent-ink);box-shadow:0 4px 14px rgba(10,108,120,.35)}
+.btn.perigo:hover{border-color:var(--bad);color:var(--bad);background:var(--bad-soft)}
+.btn.ok:hover{border-color:var(--ok);color:var(--ok);background:var(--ok-soft)}
+.campo input,.campo select,.campo textarea{border-radius:8px;transition:border-color .15s,box-shadow .15s}
+.campo input:hover,.campo select:hover,.campo textarea:hover{border-color:var(--muted)}
+.campo input:focus,.campo select:focus,.campo textarea:focus{outline:0;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+.chip,.radio-chips span,.seg-ctl{transition:background .15s,border-color .15s}
+.chip:hover,.radio-chips span:hover{border-color:var(--accent)}
+/* Tabelas */
+.tab th{background:transparent;border-bottom:1px solid var(--line);padding-top:12px;padding-bottom:12px}
+.tab td{border-bottom-color:color-mix(in srgb,var(--line) 60%,transparent)}
+.tab tbody tr:nth-child(even) td{background:color-mix(in srgb,var(--surface-2) 35%,transparent)}
+.tab tbody tr.click:hover td{background:var(--accent-soft)}
+.pill{padding:3px 10px}
+/* Janelas e avisos */
+.modal{border-radius:16px;box-shadow:0 24px 60px rgba(5,12,18,.35)}
+.modal-fundo{-webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px)}
+.toast{border-radius:10px}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
 </head>
 <body>
