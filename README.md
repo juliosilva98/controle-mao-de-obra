@@ -13,9 +13,9 @@ Sistema web para supervisores informarem a mão de obra requisitada (por **navio
 
 | Perfil | Pode fazer |
 |---|---|
-| **Supervisor** | Criar requisição (navio, armazém, data, turno), adicionar/remover trabalhadores enquanto estiver *Aberta*, cancelar com motivo, duplicar para outro turno, cadastrar navio novo. **Não vê valores.** |
+| **Supervisor** | Criar requisição (navio, armazém, data, turno), adicionar/remover trabalhadores enquanto estiver *Aberta*, cancelar com motivo, duplicar para outro turno. Consulta navios (não cadastra). **Não vê valores.** |
 | **Administrador** | Tudo do supervisor + aprovar/reabrir, cadastros (empresas, trabalhadores MEI, funções, turnos, armazéns, feriados), tabela de preços com vigência, usuários, painel de custos, auditoria, exportação CSV com valores, tudo do financeiro e estorno de pagamento. |
-| **Financeiro** | Painel de custos, requisições com valores (consulta), **fechamentos por fornecedor**: gera o lote de diárias aprovadas, informa a NF, confere (diferença exige justificativa) e registra o pagamento. Consulta tabela de preços, empresas, trabalhadores (com chave PIX) e auditoria. **Não cria, não altera e não aprova requisições, e não altera preços.** |
+| **Financeiro** | Painel de custos, requisições com valores (consulta), **fechamentos por fornecedor**: gera o lote de diárias aprovadas, informa a NF, confere (diferença exige justificativa) e registra o pagamento. Cadastra navios. Consulta tabela de preços, empresas, trabalhadores (com chave PIX) e auditoria. **Não cria, não altera e não aprova requisições, e não altera preços.** |
 
 ### Regras garantidas pelo banco (não dependem da tela)
 
@@ -23,7 +23,10 @@ Sistema web para supervisores informarem a mão de obra requisitada (por **navio
 2. **Domingo/feriado automático:** pela data e pela tabela `feriados` (cadastre os municipais).
 3. **Habilitação:** trabalhador só entra numa função em que está habilitado e se estiver ativo.
 4. **Conflito de turno:** o mesmo trabalhador não pode estar em turnos sobrepostos no mesmo dia (ex.: 07x13 e 07x19).
-5. **Fluxo:** supervisor só altera requisição própria e *Aberta*; só o administrador aprova.
+5. **Fluxo:** supervisor só altera requisição própria e *Aberta*; só o administrador aprova. Navio novo só é cadastrado pelo administrador ou pelo financeiro.
+12. **Número do espelho:** cada requisição recebe do banco um sequencial por ano (ex.: *2026/0001*), que não pula e não pode ser alterado.
+
+**Espelho da requisição (PDF):** na tela da requisição, o botão *Espelho PDF* gera um PDF em folha carta na horizontal, leve (cerca de 50 KB), com o número, os dados, a lista de trabalhadores e um QR code que abre a requisição no sistema (só com login). Não mostra valores. No celular, o botão *Enviar (WhatsApp)* abre o compartilhamento direto; no computador, o PDF é baixado para anexar no WhatsApp como *Documento*.
 6. **Sigilo de preço:** tabela de preços e valores só aparecem para administrador e financeiro (também na API).
 7. **Auditoria:** inclusão/alteração/exclusão em requisições, itens, preços, trabalhadores, empresas e usuários fica registrada com usuário e antes/depois.
 8. **Histórico de preço:** mudar um valor cria nova vigência; requisições antigas mantêm o valor da época.

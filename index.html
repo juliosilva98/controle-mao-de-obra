@@ -267,7 +267,11 @@ const fdata = s => s ? s.slice(8, 10) + '/' + s.slice(5, 7) + '/' + s.slice(0, 4
 const fdh = s => s ? new Date(s).toLocaleString('pt-BR', {dateStyle:'short', timeStyle:'short'}) : '';
 const DIAS = ['domingo','segunda','terça','quarta','quinta','sexta','sábado'];
 const dow = s => new Date(s + 'T12:00:00').getDay();
-const reqNum = id => 'REQ-' + String(id).padStart(5, '0');
+// Número da requisição: sequencial por ano gravado pelo banco (ex.: 2026/0001)
+const NUMS = {};
+const fmtNumero = r => r && (r.numero_fmt || (r.numero && r.numero_ano ? r.numero_ano + '/' + String(r.numero).padStart(4, '0') : null));
+const regNums = rows => { for (const r of rows) { const n = fmtNumero(r); if (n) NUMS['requisicao_id' in r ? r.requisicao_id : r.id] = n; } };
+const reqNum = id => NUMS[id] || 'REQ-' + String(id).padStart(5, '0');
 const TIPO_DIA = {UTIL:'Dia útil', DOM_FER:'Domingo/feriado'};
 const STATUS = {ABERTA:'Aberta', APROVADA:'Aprovada', CANCELADA:'Cancelada'};
 const ST_FECH = {EM_CONFERENCIA:'Em conferência', CONFERIDO:'Conferido', PAGO:'Pago'};
@@ -339,6 +343,10 @@ function DemoDB(){
   const falha = m => { throw new Error(m); };
   const get = (t, id) => S[t].find(x => x.id === id);
   const tipoDia = d => dow(d) === 0 || S.feriados.some(f => f.data === d) ? 'DOM_FER' : 'UTIL';
+  // mesma regra do gatilho: sequencial por ano de criação, nunca muda
+  const numerar = () => { S.numeracao = S.numeracao || {};
+    for (const r of [...S.requisicoes].sort((a, b) => String(a.criado_em).localeCompare(String(b.criado_em)) || a.id - b.id))
+      if (!r.numero) { const ano = +String(r.criado_em || new Date().toISOString()).slice(0, 4); r.numero_ano = ano; r.numero = S.numeracao[ano] = (S.numeracao[ano] || 0) + 1; } };
   const audit = (t, acao, ant, nov) => { const r = nov || ant; S.auditoria.push({id:nid('auditoria'), tabela:t, registro_id:String(r.id ?? r.trabalhador_id ?? r.data), acao, usuario_id:me ? me.id : null, dados_antigos:ant ? clone(ant) : null, dados_novos:nov ? clone(nov) : null, em:new Date().toISOString()}); };
 
   function regraItem(row){
@@ -363,8 +371,8 @@ function DemoDB(){
     if (!me || !me.ativo) return false;
     if (adm()) return true;
     if (t === 'fechamentos') return veVal() && op === 'update';
+    if (t === 'navios') return op === 'insert' && me.perfil === 'FINANCEIRO';
     if (!podeReq()) return false;
-    if (t === 'navios') return op === 'insert';
     if (t === 'requisicoes') return op === 'insert' || (op === 'update' && row.supervisor_id === me.id && row.status === 'ABERTA');
     if (t === 'requisicao_itens') { const r = get('requisicoes', row.requisicao_id); return r && r.supervisor_id === me.id && r.status === 'ABERTA'; }
     return false;
@@ -381,12 +389,13 @@ function DemoDB(){
 
   function visao(t){
     const nome = (tb, id) => (get(tb, id) || {}).nome;
+    numerar();
     if (t === 'vw_requisicoes') return S.requisicoes.map(r => {
       const tu = get('turnos', r.turno_id), na = get('navios', r.navio_id), it = S.requisicao_itens.filter(i => i.requisicao_id === r.id);
       return {...r, turno:tu.codigo, periodo:tu.periodo, horas_turno:tu.horas, navio:na.nome, viagem:na.viagem, armazem:nome('armazens', r.armazem_id),
         supervisor:nome('usuarios', r.supervisor_id), aprovado_por_nome:r.aprovado_por ? nome('usuarios', r.aprovado_por) : null,
         qtd_trabalhadores:it.length, valor_total:veVal() ? it.reduce((s, i) => s + Number(i.valor_unitario), 0) : null,
-        em_fechamento:it.some(i => i.fechamento_id)};
+        em_fechamento:it.some(i => i.fechamento_id), numero_fmt:fmtNumero(r)};
     });
     if (t === 'vw_fechamentos') return veVal() ? S.fechamentos.map(f => {
       const it = S.requisicao_itens.filter(i => i.fechamento_id === f.id);
@@ -400,7 +409,7 @@ function DemoDB(){
       return {id:i.id, requisicao_id:r.id, data:r.data, tipo_dia:r.tipo_dia, status:r.status, turno_id:r.turno_id, turno:tu.codigo, periodo:tu.periodo, horas:i.horas,
         navio_id:r.navio_id, navio:na.nome, viagem:na.viagem, armazem_id:r.armazem_id, armazem:nome('armazens', r.armazem_id), trabalhador_id:tb.id, trabalhador:tb.nome, cnpj_mei:tb.cnpj_mei,
         funcao_id:i.funcao_id, funcao:nome('funcoes', i.funcao_id), empresa_id:i.empresa_id, empresa:nome('empresas', i.empresa_id), supervisor_id:r.supervisor_id,
-        supervisor:nome('usuarios', r.supervisor_id), valor:veVal() ? i.valor_unitario : null, observacao:i.observacao, fechamento_id:i.fechamento_id || null};
+        supervisor:nome('usuarios', r.supervisor_id), valor:veVal() ? i.valor_unitario : null, observacao:i.observacao, fechamento_id:i.fechamento_id || null, numero_fmt:fmtNumero(r)};
     });
   }
 
@@ -446,7 +455,7 @@ function DemoDB(){
         if (t === 'trabalhadores' || t === 'empresas' || t === 'navios' || t === 'armazens' || t === 'funcoes' || t === 'turnos') row.ativo = row.ativo ?? true;
         if (t !== 'feriados' && t !== 'trabalhador_funcoes') row.id = nid(t);
         unico(t, row);
-        S[t].push(row); audit(t, 'INSERT', null, row); saida.push(clone(row));
+        S[t].push(row); if (t === 'requisicoes') numerar(); audit(t, 'INSERT', null, row); saida.push(clone(row));
       }
       salvar(); return saida[0];
     },
@@ -658,6 +667,7 @@ const isAdmin = () => ME && ME.perfil === 'ADMIN';
 const isFin = () => ME && ME.perfil === 'FINANCEIRO';
 const veValores = () => isAdmin() || isFin();
 const podeRequisitar = () => ME && (ME.perfil === 'ADMIN' || ME.perfil === 'SUPERVISOR');
+const podeCriarNavio = () => isAdmin() || isFin();
 const A = 'ADMIN', S_ = 'SUPERVISOR', F = 'FINANCEIRO';
 const permite = perfis => !perfis || perfis.includes(ME.perfil);
 const byId = (t, id) => (C[t] || []).find(x => x.id === id) || {};
@@ -680,6 +690,8 @@ async function boot(){
     try { await carregarScript(SUPABASE_CDN); DB = SupaDB({url:CONFIG.SUPABASE_URL, key:CONFIG.SUPABASE_ANON_KEY}); }
     catch (e) { app.innerHTML = `<div class="vazio">Não foi possível conectar ao banco. Verifique a internet e a configuração.<br>${esc(e.message)}</div>`; return; }
   } else DB = DemoDB();
+  // guarda o número anual de toda requisição que passar pela tela
+  for (const k of ['list', 'insert']) { const f = DB[k].bind(DB); DB[k] = async (t, ...a) => { const r = await f(t, ...a); if (/requisic|vw_itens/.test(t) && r) regNums([].concat(r)); return r; }; }
   try { ME = await DB.sessao(); } catch (e) { ME = null; }
   ME ? entrar() : telaLogin();
 }
@@ -942,7 +954,7 @@ function formCabecalho(r = {}){
     </div>
     <div class="campo"><label for="n-nav">Navio *</label>
       <div style="display:flex;gap:8px"><select id="n-nav" required style="flex:1;min-width:0"><option value="">Selecione o navio</option>${C.navios.filter(n => n.ativo || n.id === r.navio_id).map(n => `<option value="${n.id}" ${n.id === r.navio_id ? 'selected' : ''}>${esc(n.nome)}${n.viagem ? ' · viagem ' + esc(n.viagem) : ''}</option>`).join('')}</select>
-      <button type="button" class="btn" id="n-novonav">Novo navio</button></div></div>
+      ${podeCriarNavio() ? '<button type="button" class="btn" id="n-novonav">Novo navio</button>' : ''}</div>${podeCriarNavio() ? '' : '<span class="muted" style="font-size:.82rem">Navio novo: peça ao administrador ou ao financeiro para cadastrar.</span>'}</div>
     <div class="campo"><span style="font-size:.8rem;font-weight:600;color:var(--muted)">Turno *</span>
       <div class="radio-chips" role="radiogroup" aria-label="Turno">${turnos.map(t => `<label><input type="radio" name="n-turno" value="${t.id}" ${t.id === r.turno_id ? 'checked' : ''}><span>${esc(t.codigo)}<small>${t.horas}h ${t.periodo === 'NOTURNO' ? 'noturno' : 'diurno'}</small></span></label>`).join('')}</div></div>
     <div class="campo"><label for="n-obs">Observação</label><textarea id="n-obs" placeholder="Ex.: descarga de bobinas, porão 2">${esc(r.observacao || '')}</textarea></div>`;
@@ -951,7 +963,7 @@ function ligarCabecalho(raiz){
   const atualizarTipo = () => { const d = $('#n-data', raiz).value; const t = tipoDiaLocal(d); const fer = C.feriados.find(x => x.data === d);
     $('#n-tipo', raiz).innerHTML = d ? `${DIAS[dow(d)]} · <span class="tag ${t}">${TIPO_DIA[t]}${fer ? ' · ' + esc(fer.descricao) : ''}</span>` : ''; };
   $('#n-data', raiz).onchange = atualizarTipo; atualizarTipo();
-  $('#n-novonav', raiz).onclick = () => formNavio(async novo => {
+  if ($('#n-novonav', raiz)) $('#n-novonav', raiz).onclick = () => formNavio(async novo => {
     const sel = $('#n-nav', raiz); const o = document.createElement('option'); o.value = novo.id; o.textContent = novo.nome + (novo.viagem ? ' · viagem ' + novo.viagem : ''); sel.appendChild(o); sel.value = novo.id;
   });
 }
@@ -982,6 +994,92 @@ async function vNova(){
 }
 
 /* ------------------------ Detalhe da requisição ------------------------ */
+/* ===================== Espelho da requisição (PDF) =====================
+   PDF A4 em vetor (leve, abre no WhatsApp), sem valores em R$.
+   QR code com o link da requisição no sistema (só abre com login). */
+const JSPDF_CDN = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js';
+const QR_CDN = 'https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js';
+function podeCompartilharArquivo(){
+  try { return !!(navigator.canShare && navigator.canShare({files:[new File(['x'], 'teste.pdf', {type:'application/pdf'})]})); } catch (e) { return false; }
+}
+async function gerarEspelho(r, itens){
+  if (!window.jspdf) await carregarScript(JSPDF_CDN);
+  if (!window.qrcode) await carregarScript(QR_CDN);
+  // Folha carta (Letter) na horizontal, layout compacto
+  const doc = new window.jspdf.jsPDF({unit:'mm', format:'letter', orientation:'landscape'});
+  const W = doc.internal.pageSize.getWidth(), H = doc.internal.pageSize.getHeight(), M = 12, num = reqNum(r.id);
+  const link = location.origin + location.pathname + '#req-' + r.id;
+  const AZUL = [20, 34, 47], CINZA = [90, 107, 123], LINHA = [211, 220, 228];
+  const fonte = (s, b) => { doc.setFont('helvetica', b ? 'bold' : 'normal'); doc.setFontSize(s); };
+  // corta o texto pela largura real (mm), com reticências
+  const cabe = (s, larg, tam, b) => { fonte(tam, b); let t = String(s ?? ''); if (doc.getTextWidth(t) <= larg) return t;
+    while (t.length > 1 && doc.getTextWidth(t + '…') > larg) t = t.slice(0, -1); return t.replace(/\s+$/, '') + '…'; };
+  const txt = (s, x, y, o = {}) => { const tam = o.s || 9, larg = o.w; const t = larg ? cabe(s, larg, tam, o.b) : String(s ?? '');
+    fonte(tam, o.b); doc.setTextColor(...(o.c || AZUL)); doc.text(t, x, y, o.a ? {align:o.a} : undefined); };
+
+  // QR code em vetor (nítido em qualquer tela)
+  const qr = window.qrcode(0, 'M'); qr.addData(link); qr.make();
+  const n = qr.getModuleCount(), lado = 26, cel = lado / n, qx = W - M - lado, qy = 9;
+  doc.setFillColor(0, 0, 0);
+  for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) if (qr.isDark(i, j)) doc.rect(qx + j * cel, qy + i * cel, cel + 0.02, cel + 0.02, 'F');
+  txt('Conferir no sistema', qx + lado / 2, qy + lado + 3.5, {s:6.5, c:CINZA, a:'center'});
+
+  // Cabeçalho: título, número e situação
+  txt('CONTROLE DE MÃO DE OBRA SEATRADE', M, 14, {s:8, b:1, c:CINZA});
+  txt('Espelho de requisição de mão de obra', M, 21, {s:12, b:1});
+  txt('Nº ' + num, M, 31, {s:19, b:1});
+  fonte(19, 1); const xSt = M + doc.getTextWidth('Nº ' + num) + 6;
+  const corSt = r.status === 'APROVADA' ? [22, 120, 70] : r.status === 'CANCELADA' ? [180, 35, 35] : [170, 110, 0];
+  txt((STATUS[r.status] || r.status).toUpperCase() + (r.status === 'ABERTA' ? ' · aguardando aprovação' : ''), xSt, 30.5, {s:9.5, b:1, c:corSt});
+
+  // Dados da requisição: 4 colunas entre o título e o QR
+  const campos = [
+    ['Navio', r.navio + (r.viagem ? ' · viagem ' + r.viagem : '')], ['Armazém / local', r.armazem],
+    ['Data do dia operacional', fdata(r.data) + ' · ' + DIAS[dow(r.data)]], ['Turno', `${r.turno} · ${r.horas_turno}h ${r.periodo === 'NOTURNO' ? 'noturno' : 'diurno'} · ${TIPO_DIA[r.tipo_dia]}`],
+    ['Supervisor', r.supervisor], ['Criada em', fdh(r.criado_em)],
+    ['Aprovação', r.aprovado_em ? `${r.aprovado_por_nome || ''} · ${fdh(r.aprovado_em).slice(0, 10)}` : '—'], ['Trabalhadores', `${itens.length} · ${itens.reduce((s, i) => s + i.horas, 0)} horas-homem`]];
+  doc.setDrawColor(...LINHA); doc.setLineWidth(0.3); doc.line(M, 38, qx - 4, 38);
+  const larg = (qx - 4 - M) / 4;
+  campos.forEach(([l, v], k) => { const x = M + (k % 4) * larg, y = 44 + Math.floor(k / 4) * 10;
+    txt(l.toUpperCase(), x, y, {s:6.5, b:1, c:CINZA}); txt(v, x, y + 4.3, {s:9, w:larg - 3}); });
+  let y = 62;
+  const linhaTexto = (rot, valor) => { if (!valor) return; txt(rot.toUpperCase() + ':', M, y, {s:6.5, b:1, c:CINZA});
+    fonte(6.5, 1); const x = M + doc.getTextWidth(rot.toUpperCase() + ':') + 2; txt(valor, x, y, {s:9, w:W - M - x}); y += 5.5; };
+  linhaTexto('Observação', r.observacao);
+  if (r.status === 'CANCELADA') linhaTexto('Motivo do cancelamento', r.motivo_cancelamento);
+
+  // Resumo por função
+  const porFuncao = [...itens.reduce((m, i) => m.set(i.funcao, (m.get(i.funcao) || 0) + 1), new Map())].map(([f, q]) => `${f}: ${q}`).join('   ·   ');
+  doc.setFillColor(238, 242, 245); doc.roundedRect(M, y - 1, W - 2 * M, 7.5, 1.2, 1.2, 'F');
+  txt(porFuncao, M + 3, y + 4, {s:8.5, b:1, w:W - 2 * M - 6});
+  y += 13;
+
+  // Lista de trabalhadores
+  const col = [M, M + 9, M + 112, M + 186, W - M];
+  const rot = (s, x, a) => txt(s, x, y, {s:7, b:1, c:CINZA, a});
+  const cabecalho = () => { rot('#', col[0]); rot('TRABALHADOR', col[1]); rot('FUNÇÃO', col[2]); rot('EMPRESA', col[3]); rot('HORAS', col[4], 'right');
+    y += 1.8; doc.setDrawColor(...LINHA); doc.line(M, y, W - M, y); y += 4.3; };
+  cabecalho();
+  const ordenados = [...itens].sort((a, b) => String(a.funcao).localeCompare(String(b.funcao)) || String(a.trabalhador).localeCompare(String(b.trabalhador), 'pt-BR'));
+  ordenados.forEach((i, k) => {
+    if (y > H - 16) { doc.addPage(); y = 16; txt('Nº ' + num + ' (continuação)', M, y, {s:10, b:1}); y += 8; cabecalho(); }
+    txt(k + 1, col[0], y, {s:8.5, c:CINZA}); txt(i.trabalhador, col[1], y, {s:8.5, w:col[2] - col[1] - 4});
+    txt(i.funcao, col[2], y, {s:8.5, w:col[3] - col[2] - 4}); txt(i.empresa, col[3], y, {s:8.5, w:col[4] - col[3] - 16});
+    txt(i.horas + 'h', col[4], y, {s:8.5, a:'right'});
+    y += 2; doc.setDrawColor(235, 239, 243); doc.line(M, y, W - M, y); y += 3.8;
+  });
+
+  // Rodapé em todas as páginas
+  const total = doc.getNumberOfPages(), gerado = new Date().toLocaleString('pt-BR', {dateStyle:'short', timeStyle:'short'});
+  for (let p = 1; p <= total; p++) { doc.setPage(p);
+    doc.setDrawColor(...LINHA); doc.line(M, H - 10, W - M, H - 10);
+    txt(`Gerado em ${gerado}${ME ? ' por ' + ME.nome : ''} · Documento sem valores · A situação válida é a do sistema (QR code).`, M, H - 6, {s:6.5, c:CINZA});
+    txt(`Página ${p} de ${total}`, W - M, H - 6, {s:6.5, c:CINZA, a:'right'}); }
+
+  const blob = doc.output('blob');
+  return new File([blob], `Requisicao_${num.replace(/\W+/g, '-')}.pdf`, {type:'application/pdf'});
+}
+
 async function vDetalhe(id){
   const [rs, itens] = await Promise.all([DB.list('vw_requisicoes', {eq:{id}}), DB.list('vw_itens', {eq:{requisicao_id:id}, order:'trabalhador'})]);
   const r = rs[0]; if (!r) throw new Error('Requisição não encontrada.');
@@ -996,7 +1094,9 @@ async function vDetalhe(id){
     podeRequisitar() ? '<button class="btn" id="d-dup" type="button">Duplicar</button>' : '',
     adm && r.status === 'ABERTA' && itens.length ? '<button class="btn" id="d-repr" type="button">Reprocessar preços</button>' : '',
     adm && r.status !== 'ABERTA' && !fechada ? '<button class="btn" id="d-reabrir" type="button">Reabrir</button>' : '',
-    editavel ? '<button class="btn perigo" id="d-cancel" type="button">Cancelar</button>' : ''].join('');
+    editavel ? '<button class="btn perigo" id="d-cancel" type="button">Cancelar</button>' : '',
+    itens.length ? '<button class="btn" id="d-pdf" type="button">Espelho PDF</button>' : '',
+    itens.length && podeCompartilharArquivo() ? '<button class="btn" id="d-zap" type="button">Enviar (WhatsApp)</button>' : ''].join('');
   const porFuncao = C.funcoes.map(fu => [fu, itens.filter(i => i.funcao_id === fu.id)]).filter(([, l]) => l.length);
   pagina(`<span class="reqnum">${reqNum(r.id)}</span>`, `${esc(r.navio)}${r.viagem ? ' · viagem ' + esc(r.viagem) : ''} · ${esc(r.armazem)}`, acoes, `
     <section class="painel"><dl class="ficha" style="margin:0">
@@ -1020,6 +1120,18 @@ async function vDetalhe(id){
     </section>
     ${editavel ? '<section class="painel" id="d-add"></section>' : ''}`);
 
+  if ($('#topo-t')) $('#topo-t').textContent = reqNum(r.id);
+  // pré-carrega as bibliotecas do PDF para o "Enviar" abrir rápido
+  if (itens.length) { if (!window.jspdf) carregarScript(JSPDF_CDN).catch(() => {}); if (!window.qrcode) carregarScript(QR_CDN).catch(() => {}); }
+  const espelho = async compartilhar => {
+    try { const arq = await gerarEspelho(r, itens);
+      if (compartilhar) await navigator.share({files:[arq], title:'Requisição ' + reqNum(r.id), text:`Espelho da requisição ${reqNum(r.id)} · ${r.navio} · ${fdata(r.data)} · ${r.turno}`});
+      else { const a = document.createElement('a'); a.href = URL.createObjectURL(arq); a.download = arq.name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+        toast('PDF baixado. No WhatsApp: clipe (anexar) → Documento → escolha o arquivo.'); }
+    } catch (e) { if (e.name !== 'AbortError') toast('Não foi possível gerar o espelho: ' + e.message, 1); }
+  };
+  if ($('#d-pdf')) $('#d-pdf').onclick = () => espelho(false);
+  if ($('#d-zap')) $('#d-zap').onclick = () => espelho(true);
   $$('[data-rem]').forEach(b => b.onclick = async () => { try { await DB.remove('requisicao_itens', {id:+b.dataset.rem}); toast('Trabalhador removido.'); vDetalhe(id); } catch (e) { toast(e.message, 1); } });
   if ($('#d-aprovar')) $('#d-aprovar').onclick = () => confirmar('Aprovar requisição', `${reqNum(id)} com ${itens.length} trabalhadores, total ${brl(total)}. Após aprovar, o supervisor não consegue mais alterar.`, 'Aprovar', async () => { await DB.update('requisicoes', {id}, {status:'APROVADA'}); toast('Requisição aprovada.'); vDetalhe(id); });
   if ($('#d-reabrir')) $('#d-reabrir').onclick = () => confirmar('Reabrir requisição', 'A requisição volta para "Aberta" e poderá ser alterada pelo supervisor.', 'Reabrir', async () => { await DB.update('requisicoes', {id}, {status:'ABERTA', motivo_cancelamento:null}); toast('Requisição reaberta.'); vDetalhe(id); });
@@ -1099,7 +1211,7 @@ const CRUD = {
   empresas:{titulo:'Empresas fornecedoras', sub:'Quem fornece a mão de obra e o que está incluso no preço', tabela:'empresas',
     campos:[{k:'nome',l:'Nome',req:1,upper:1},{k:'cnpj',l:'CNPJ'},{k:'contato',l:'Contato'},{k:'telefone',l:'Telefone'},{k:'email',l:'E-mail',type:'email'},{k:'fornece_epi',l:'Fornece EPI',type:'bool'},{k:'fornece_lanche',l:'Fornece lanche',type:'bool'},{k:'observacao',l:'Observação',type:'area'},{k:'ativo',l:'Ativa',type:'bool',def:true}],
     cols:[['nome','Empresa'],['cnpj','CNPJ'],['contato','Contato'],['telefone','Telefone'],['fornece_epi','EPI','sn'],['fornece_lanche','Lanche','sn'],['ativo','Situação','ativo']]},
-  navios:{titulo:'Navios', sub:'Toda requisição é vinculada a um navio', tabela:'navios', supIns:1,
+  navios:{titulo:'Navios', sub:'Toda requisição é vinculada a um navio. Cadastro: administrador e financeiro.', tabela:'navios', finIns:1,
     campos:[{k:'nome',l:'Nome do navio',req:1,upper:1,ph:'Ex.: NAVIO TESTE 1'},{k:'viagem',l:'Viagem',ph:'Ex.: 026N'},{k:'eta',l:'ETA',type:'date'},{k:'observacao',l:'Observação',type:'area'},{k:'ativo',l:'Ativo (aparece para seleção)',type:'bool',def:true}],
     cols:[['nome','Navio'],['viagem','Viagem'],['eta','ETA','data'],['observacao','Observação'],['ativo','Situação','ativo']]},
   armazens:{titulo:'Armazéns e locais', sub:'Onde a equipe vai trabalhar', tabela:'armazens',
@@ -1116,7 +1228,7 @@ const CRUD = {
 async function vCrud(chave){
   const cfg = CRUD[chave], pk = cfg.pk || 'id', adm = isAdmin();
   const st = estado['crud_' + chave] || (estado['crud_' + chave] = {busca:''});
-  const podeNovo = adm || (cfg.supIns && podeRequisitar());
+  const podeNovo = adm || (cfg.finIns && isFin());
   pagina(cfg.titulo, cfg.sub, podeNovo ? '<button class="btn primario" id="cr-novo" type="button">Novo</button>' : '', `
     <div class="filtros"><div class="campo" style="max-width:360px;flex-basis:260px"><label for="cr-b">Buscar</label><input id="cr-b" type="search" value="${esc(st.busca)}"></div></div>
     <div id="cr-lista"></div>`);

@@ -191,6 +191,14 @@ create table if not exists public.requisicoes (
   criado_em            timestamptz not null default now(),
   atualizado_em        timestamptz not null default now()
 );
+-- Número do espelho: sequencial por ano (ex.: 2026/0001), gravado pelo banco na criação
+alter table public.requisicoes add column if not exists numero_ano int;
+alter table public.requisicoes add column if not exists numero     int;
+create unique index if not exists ux_req_numero on public.requisicoes(numero_ano, numero);
+create table if not exists public.requisicao_numeracao (
+  ano     int primary key,
+  ultimo  int not null default 0
+);
 create index if not exists ix_req_data  on public.requisicoes(data);
 create index if not exists ix_req_navio on public.requisicoes(navio_id);
 
@@ -300,8 +308,17 @@ begin
   if tg_op = 'INSERT' then
     new.status := 'ABERTA';
     new.aprovado_por := null; new.aprovado_em := null;
+    -- sequencial do ano (não pula número; não pode ser digitado)
+    new.numero_ano := extract(year from (now() at time zone 'America/Sao_Paulo'))::int;
+    insert into public.requisicao_numeracao as n (ano, ultimo) values (new.numero_ano, 1)
+      on conflict (ano) do update set ultimo = n.ultimo + 1
+      returning n.ultimo into new.numero;
     return new;
   end if;
+
+  -- o número nunca muda depois de gravado
+  new.numero_ano := coalesce(old.numero_ano, new.numero_ano);
+  new.numero     := coalesce(old.numero, new.numero);
 
   if (new.status, new.data, new.turno_id, new.navio_id, new.armazem_id)
        is distinct from (old.status, old.data, old.turno_id, old.navio_id, old.armazem_id)
@@ -328,6 +345,19 @@ end $$;
 drop trigger if exists trg_requisicao_antes on public.requisicoes;
 create trigger trg_requisicao_antes before insert or update on public.requisicoes
   for each row execute function public.fn_requisicao_antes();
+
+-- Numera requisições antigas que ainda não têm número (na ordem de criação)
+do $$
+declare r record; v_ano int; v_num int;
+begin
+  for r in select id, criado_em from public.requisicoes where numero is null order by criado_em, id loop
+    v_ano := extract(year from (r.criado_em at time zone 'America/Sao_Paulo'))::int;
+    insert into public.requisicao_numeracao as n (ano, ultimo) values (v_ano, 1)
+      on conflict (ano) do update set ultimo = n.ultimo + 1
+      returning n.ultimo into v_num;
+    update public.requisicoes set numero_ano = v_ano, numero = v_num where id = r.id;
+  end loop;
+end $$;
 
 -- Se mudar data ou turno, reprecifica e revalida os itens
 create or replace function public.fn_requisicao_depois()
@@ -547,7 +577,9 @@ select r.id, r.data, r.tipo_dia, r.status, r.observacao, r.motivo_cancelamento,
        case when public.ve_valores()
             then (select coalesce(sum(i.valor_unitario),0) from public.requisicao_itens i where i.requisicao_id = r.id)
        end as valor_total,
-       exists (select 1 from public.requisicao_itens i where i.requisicao_id = r.id and i.fechamento_id is not null) as em_fechamento
+       exists (select 1 from public.requisicao_itens i where i.requisicao_id = r.id and i.fechamento_id is not null) as em_fechamento,
+       r.numero_ano, r.numero,
+       case when r.numero is not null then r.numero_ano || '/' || lpad(r.numero::text, 4, '0') end as numero_fmt
   from public.requisicoes r
   join public.turnos   t on t.id = r.turno_id
   join public.navios   n on n.id = r.navio_id
@@ -567,7 +599,8 @@ select i.id, i.requisicao_id, r.data, r.tipo_dia, r.status,
        r.supervisor_id, u.nome as supervisor,
        case when public.ve_valores() then i.valor_unitario end as valor,
        i.observacao,
-       i.fechamento_id
+       i.fechamento_id,
+       case when r.numero is not null then r.numero_ano || '/' || lpad(r.numero::text, 4, '0') end as numero_fmt
   from public.requisicao_itens i
   join public.requisicoes   r  on r.id  = i.requisicao_id
   join public.turnos        t  on t.id  = r.turno_id
@@ -620,6 +653,8 @@ alter table public.requisicoes         enable row level security;
 alter table public.requisicao_itens    enable row level security;
 alter table public.fechamentos         enable row level security;
 alter table public.auditoria           enable row level security;
+alter table public.requisicao_numeracao enable row level security;   -- sem políticas: só o banco (gatilho) usa
+revoke all on public.requisicao_numeracao from anon, authenticated;
 
 -- Usuários
 drop policy if exists usu_sel on public.usuarios;
@@ -641,11 +676,12 @@ begin
   end loop;
 end $$;
 
--- Navios: quem requisita pode cadastrar navio novo; editar/excluir só ADMIN
+-- Navios: todos os ativos consultam; só ADMIN e FINANCEIRO cadastram; editar/excluir só ADMIN
 drop policy if exists nav_sel on public.navios;
 create policy nav_sel on public.navios for select using (public.is_ativo());
 drop policy if exists nav_ins on public.navios;
-create policy nav_ins on public.navios for insert with check (public.pode_requisitar());
+create policy nav_ins on public.navios for insert
+  with check (coalesce(public.meu_perfil() in ('ADMIN','FINANCEIRO'), false));
 drop policy if exists nav_upd on public.navios;
 create policy nav_upd on public.navios for update using (public.is_admin()) with check (public.is_admin());
 drop policy if exists nav_del on public.navios;
@@ -721,22 +757,26 @@ grant select on public.vw_requisicoes, public.vw_itens, public.vw_fechamentos, p
 --    Fornecedores e tabela de preços NÃO ficam neste arquivo (ele é público):
 --    são carregados por um arquivo privado, rodado direto no SQL Editor.
 -- ---------------------------------------------------------------------
-insert into public.funcoes (nome) values
-  ('OPERADOR DE EMPILHADEIRA'), ('CONFERENTE'), ('AUXILIAR')
+-- Só carrega quando a tabela está vazia (rodar de novo não recria o que você renomeou)
+insert into public.funcoes (nome)
+select v.nome from (values ('OPERADOR DE EMPILHADEIRA'), ('CONFERENTE'), ('AUXILIAR')) v(nome)
+where not exists (select 1 from public.funcoes)
 on conflict (nome) do nothing;
 
-insert into public.turnos (codigo, descricao, hora_inicio, horas, periodo) values
+insert into public.turnos (codigo, descricao, hora_inicio, horas, periodo)
+select * from (values
   ('07x13', '07h às 13h (6h diurno)',   7,  6, 'DIURNO'),
   ('13x19', '13h às 19h (6h diurno)',  13,  6, 'DIURNO'),
   ('19x01', '19h às 01h (6h noturno)', 19,  6, 'NOTURNO'),
   ('01x07', '01h às 07h (6h noturno)',  1,  6, 'NOTURNO'),
   ('07x19', '07h às 19h (12h diurno)',  7, 12, 'DIURNO'),
-  ('19x07', '19h às 07h (12h noturno)',19, 12, 'NOTURNO')
+  ('19x07', '19h às 07h (12h noturno)',19, 12, 'NOTURNO')) v(codigo, descricao, hora_inicio, horas, periodo)
+where not exists (select 1 from public.turnos)
 on conflict (codigo) do nothing;
 
-
-insert into public.armazens (nome) values
-  ('ARMAZÉM 1'), ('ARMAZÉM 2'), ('ARMAZÉM 3'), ('ARMAZÉM 4'), ('PÁTIO')
+insert into public.armazens (nome)
+select v.nome from (values ('ARMAZÉM 1'), ('ARMAZÉM 2'), ('ARMAZÉM 3'), ('ARMAZÉM 4'), ('PÁTIO')) v(nome)
+where not exists (select 1 from public.armazens)
 on conflict (nome) do nothing;
 
 insert into public.feriados (data, descricao) values
