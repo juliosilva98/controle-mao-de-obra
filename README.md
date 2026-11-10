@@ -120,6 +120,7 @@ A chave pública (*publishable* ou *anon public*) pode ficar no código público
 1. Crie um repositório (ex.: `controle-mao-de-obra`). Pode ser **público**: os dados ficam no Supabase, não no repositório.
 2. Envie **somente** estes arquivos, por **Add file → Upload files** no próprio GitHub:
    - `index.html`
+   - `fundo-login.jpg` (foto da tela de login)
    - `README.md`
    - `.gitignore`
    - a pasta `supabase` (com o `schema.sql`)
