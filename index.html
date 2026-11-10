@@ -1,0 +1,1430 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Controle de Mão de Obra Seatrade</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: painel lateral fixo (navegação) + área de trabalho; no celular a navegação vira gaveta. */
+:root{
+  --bg:#EEF2F5; --surface:#FFFFFF; --surface-2:#E6ECF1; --ink:#14222F; --muted:#5A6B7B; --line:#D3DCE4;
+  --accent:#0A6C78; --accent-ink:#FFFFFF; --accent-soft:#D9ECEE;
+  --signal:#B8670F; --signal-soft:#FBEAD5;
+  --ok:#22744A; --ok-soft:#DCF0E3; --bad:#B0281F; --bad-soft:#F8DEDB;
+  --nav:#0E2131; --nav-ink:#C4D3E0; --nav-dim:#7F95A8; --nav-hi:#1A3448;
+  --shadow:0 1px 2px rgba(16,34,49,.06),0 8px 24px rgba(16,34,49,.08);
+  --f-display:"IBM Plex Sans Condensed","Arial Narrow",system-ui,sans-serif;
+  --f-body:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --f-mono:"IBM Plex Mono",ui-monospace,"SFMono-Regular",Consolas,monospace;
+  --r:8px;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#0C151E; --surface:#13202D; --surface-2:#1A2A39; --ink:#E4ECF2; --muted:#93A5B5; --line:#253848;
+  --accent:#43B4C0; --accent-ink:#03232A; --accent-soft:#103940;
+  --signal:#EFA24E; --signal-soft:#3B2915;
+  --ok:#5CC48A; --ok-soft:#14321F; --bad:#F2857B; --bad-soft:#3C1A17;
+  --nav:#070F17; --nav-ink:#AFC1D1; --nav-dim:#6A8093; --nav-hi:#13283A;
+  --shadow:0 1px 2px rgba(0,0,0,.3),0 8px 24px rgba(0,0,0,.35); color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0C151E; --surface:#13202D; --surface-2:#1A2A39; --ink:#E4ECF2; --muted:#93A5B5; --line:#253848;
+  --accent:#43B4C0; --accent-ink:#03232A; --accent-soft:#103940;
+  --signal:#EFA24E; --signal-soft:#3B2915;
+  --ok:#5CC48A; --ok-soft:#14321F; --bad:#F2857B; --bad-soft:#3C1A17;
+  --nav:#070F17; --nav-ink:#AFC1D1; --nav-dim:#6A8093; --nav-hi:#13283A;
+  --shadow:0 1px 2px rgba(0,0,0,.3),0 8px 24px rgba(0,0,0,.35); color-scheme:dark}
+
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 var(--f-body);-webkit-font-smoothing:antialiased}
+h1,h2,h3{font-family:var(--f-display);font-weight:600;letter-spacing:.01em;text-wrap:balance;margin:0}
+h1{font-size:1.75rem;line-height:1.15}
+h2{font-size:1.2rem}
+h3{font-size:1rem}
+a{color:var(--accent)}
+button,input,select,textarea{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.mono,.num{font-family:var(--f-mono);font-variant-numeric:tabular-nums}
+.num{text-align:right;white-space:nowrap}
+.muted{color:var(--muted)}
+.rot{font-size:.72rem;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:600}
+
+/* ---------- Login ---------- */
+.login{min-height:100%;display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr)}
+.login-marca{background:var(--nav);color:var(--nav-ink);display:flex;flex-direction:column;justify-content:space-between;gap:40px;
+  padding-block:48px;padding-left:max(40px,env(safe-area-inset-left,0px));padding-right:40px}
+.login-marca h1{color:#fff;font-size:clamp(2rem,4vw,3rem);font-weight:700;max-width:12ch}
+.login-marca p{max-width:42ch;color:var(--nav-ink)}
+.dia-op{display:grid;gap:8px;max-width:520px}
+.dia-op .faixa{display:grid;grid-template-columns:repeat(4,1fr);gap:3px}
+.dia-op .seg{padding:10px 8px;font:500 .9rem var(--f-mono);color:#fff;background:#1C3B52;border-radius:4px;text-align:center}
+.dia-op .seg.n{background:#132B3D;color:var(--nav-ink)}
+.dia-op .doze{display:grid;grid-template-columns:1fr 1fr;gap:3px}
+.dia-op .doze span{padding:6px 8px;font:500 .8rem var(--f-mono);border:1px dashed #36556D;border-radius:4px;text-align:center;color:var(--nav-ink)}
+.login-form{display:flex;align-items:center;justify-content:center;padding-block:40px;padding-left:24px;padding-right:max(24px,env(safe-area-inset-right,0px))}
+.login-form form{width:100%;max-width:360px;display:grid;gap:16px}
+.demo-box{border:1px solid var(--line);border-radius:var(--r);padding:14px;display:grid;gap:10px;background:var(--surface)}
+.demo-box .linha{display:flex;gap:8px;flex-wrap:wrap}
+@media (max-width:820px){
+  .login{grid-template-columns:1fr}
+  .login-marca{padding-block:32px;padding-left:max(20px,env(safe-area-inset-left,0px));padding-right:max(20px,env(safe-area-inset-right,0px));gap:24px}
+  .login-form{padding-left:max(20px,env(safe-area-inset-left,0px));padding-right:max(20px,env(safe-area-inset-right,0px))}
+}
+
+/* ---------- Shell ---------- */
+.shell{display:grid;grid-template-columns:248px minmax(0,1fr);min-height:100%}
+.nav{background:var(--nav);color:var(--nav-ink);display:flex;flex-direction:column;position:sticky;top:0;height:100vh;overflow-y:auto;
+  padding-block:20px;padding-left:max(14px,env(safe-area-inset-left,0px));padding-right:14px}
+.nav .marca{font:700 1.15rem var(--f-display);color:#fff;padding:4px 10px 18px;letter-spacing:.02em}
+.nav .marca small{display:block;font:400 .75rem var(--f-body);color:var(--nav-dim);letter-spacing:0}
+.nav .grupo{font-size:.68rem;letter-spacing:.1em;text-transform:uppercase;color:var(--nav-dim);padding:16px 10px 6px;font-weight:600}
+.nav a{display:block;color:var(--nav-ink);text-decoration:none;padding:8px 10px;border-radius:6px;font-size:.93rem}
+.nav a:hover{background:var(--nav-hi);color:#fff}
+.nav a.ativo{background:var(--nav-hi);color:#fff;box-shadow:inset 3px 0 0 var(--accent)}
+.nav .rodape{margin-top:auto;padding:16px 10px 0;border-top:1px solid #1E3447;display:grid;gap:8px}
+.nav .rodape b{color:#fff;font-weight:500}
+.nav .rodape button{background:none;border:1px solid #2A445A;color:var(--nav-ink);border-radius:6px;padding:7px 10px;cursor:pointer;text-align:left}
+.nav .rodape button:hover{border-color:var(--nav-ink)}
+.topo{display:none}
+main{min-width:0;padding-block:28px 64px;padding-left:max(28px,env(safe-area-inset-left,0px));padding-right:max(28px,env(safe-area-inset-right,0px))}
+.conteudo{max-width:1180px;margin:0 auto;display:grid;grid-template-columns:minmax(0,1fr);gap:20px}
+.conteudo>*{min-width:0}
+.faixa-demo{background:var(--signal-soft);color:var(--ink);border:1px solid var(--signal);border-radius:var(--r);padding:8px 12px;font-size:.88rem;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.faixa-demo b{color:var(--signal)}
+@media (max-width:900px){
+  .shell{grid-template-columns:1fr}
+  .nav{position:fixed;inset:0 auto 0 0;width:min(280px,86vw);z-index:40;transform:translateX(-102%);transition:transform .2s;height:100%;
+    padding-top:calc(20px + env(safe-area-inset-top,0px))}
+  .shell.aberto .nav{transform:none}
+  .veu{position:fixed;inset:0;background:rgba(5,12,18,.5);z-index:30}
+  .topo{display:flex;align-items:center;gap:12px;position:sticky;top:env(safe-area-inset-top,0px);z-index:20;background:var(--nav);color:#fff;
+    padding-block:10px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+  body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:10;background:var(--nav)}
+  .topo button{background:none;border:0;color:#fff;padding:6px;cursor:pointer;display:grid}
+  .topo b{font-family:var(--f-display);font-size:1.05rem;font-weight:600}
+  main{padding-block:18px 64px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+  h1{font-size:1.45rem}
+}
+@media (prefers-reduced-motion:reduce){.nav{transition:none}}
+
+/* ---------- Componentes ---------- */
+.cab{display:flex;justify-content:space-between;align-items:flex-end;gap:12px 20px;flex-wrap:wrap}
+.cab p{margin:4px 0 0;color:var(--muted)}
+.acoes{display:flex;gap:8px;flex-wrap:wrap}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:9px 14px;border-radius:6px;border:1px solid var(--line);
+  background:var(--surface);color:var(--ink);font-weight:500;font-size:.92rem;cursor:pointer;text-decoration:none;white-space:nowrap}
+.btn:hover{border-color:var(--muted)}
+.btn.primario{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.btn.primario:hover{filter:brightness(1.08)}
+.btn.perigo{color:var(--bad);border-color:var(--bad)}
+.btn.ok{color:var(--ok);border-color:var(--ok)}
+.btn.peq{padding:5px 10px;font-size:.84rem}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.painel{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:18px;min-width:0}
+.painel>h2{margin-bottom:12px}
+.painel .cab-p{display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+.filtros{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end}
+.filtros .campo{min-width:140px;flex:1 1 140px;max-width:240px}
+.campo{display:grid;gap:4px}
+.campo label{font-size:.8rem;font-weight:600;color:var(--muted)}
+.campo input,.campo select,.campo textarea{width:100%;padding:9px 10px;border:1px solid var(--line);border-radius:6px;background:var(--surface);min-height:40px}
+.campo textarea{min-height:72px;resize:vertical}
+.campo input:focus,.campo select:focus,.campo textarea:focus{outline:2px solid var(--accent);outline-offset:-1px;border-color:var(--accent)}
+.check{display:flex;gap:8px;align-items:center;font-size:.92rem;cursor:pointer}
+.check input{width:18px;height:18px;accent-color:var(--accent)}
+.grade{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(200px,1fr))}
+.tab-wrap{overflow-x:auto;border:1px solid var(--line);border-radius:var(--r);background:var(--surface)}
+table.tab{width:100%;border-collapse:collapse;font-size:.9rem}
+.tab th{font-size:.72rem;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:600;text-align:left;padding:10px 12px;border-bottom:1px solid var(--line);background:var(--surface-2);white-space:nowrap}
+.tab td{padding:10px 12px;border-bottom:1px solid var(--line);vertical-align:middle}
+.tab tbody tr:last-child td{border-bottom:0}
+.tab tbody tr.click{cursor:pointer}
+.tab tbody tr.click:hover td{background:var(--surface-2)}
+.tab tfoot td{font-weight:600;background:var(--surface-2);border-top:1px solid var(--line)}
+.tab th.num,.tab td.num{text-align:right}
+.pill{display:inline-block;padding:2px 9px;border-radius:999px;font-size:.75rem;font-weight:600;letter-spacing:.03em;white-space:nowrap}
+.pill.ABERTA{background:var(--accent-soft);color:var(--accent)}
+.pill.APROVADA{background:var(--ok-soft);color:var(--ok)}
+.pill.CANCELADA{background:var(--bad-soft);color:var(--bad)}
+.pill.EM_CONFERENCIA{background:var(--signal-soft);color:var(--signal)}
+.pill.CONFERIDO{background:var(--accent-soft);color:var(--accent)}
+.pill.PAGO{background:var(--ok-soft);color:var(--ok)}
+.confere{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}
+.confere .caixa{border:1px solid var(--line);border-radius:6px;padding:12px;display:grid;gap:2px;min-width:0}
+.confere .caixa b{font:600 1.25rem var(--f-mono);font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.confere .caixa.ok{border-color:var(--ok);background:var(--ok-soft)}
+.confere .caixa.ok b{color:var(--ok)}
+.confere .caixa.dif{border-color:var(--bad);background:var(--bad-soft)}
+.confere .caixa.dif b{color:var(--bad)}
+.nota{background:var(--surface-2);border-radius:6px;padding:10px 12px;font-size:.88rem}
+.pill.inativo{background:var(--surface-2);color:var(--muted)}
+.tag{display:inline-block;padding:1px 7px;border-radius:4px;font-size:.74rem;font-weight:600;white-space:nowrap}
+.tag.DOM_FER{background:var(--signal-soft);color:var(--signal)}
+.tag.UTIL{background:var(--surface-2);color:var(--muted)}
+.turno{font-family:var(--f-mono);font-weight:500;background:var(--surface-2);padding:1px 6px;border-radius:4px;white-space:nowrap}
+.chips{display:flex;gap:6px;flex-wrap:wrap}
+.chip{border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:6px 12px;font-size:.86rem;cursor:pointer}
+.chip[aria-pressed="true"],.chip.on{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.chip-s{display:inline-block;font-size:.74rem;background:var(--surface-2);border-radius:4px;padding:1px 6px;margin:1px 2px 1px 0;white-space:nowrap}
+.radio-chips{display:flex;gap:6px;flex-wrap:wrap}
+.radio-chips label{position:relative}
+.radio-chips input{position:absolute;opacity:0;inset:0}
+.radio-chips span{display:block;border:1px solid var(--line);border-radius:6px;padding:8px 12px;font:500 .92rem var(--f-mono);cursor:pointer;background:var(--surface)}
+.radio-chips small{display:block;font:400 .7rem var(--f-body);color:var(--muted)}
+.radio-chips input:checked+span{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.radio-chips input:checked+span small{color:var(--accent-ink)}
+.radio-chips input:focus-visible+span{outline:2px solid var(--accent);outline-offset:2px}
+.vazio{padding:28px;text-align:center;color:var(--muted)}
+.carregando{padding:28px;text-align:center;color:var(--muted)}
+
+/* KPIs e barras */
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px}
+.kpi{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:14px 16px;display:grid;gap:4px;min-width:0}
+.kpi b{font:600 1.45rem var(--f-mono);font-variant-numeric:tabular-nums;letter-spacing:-.01em;overflow-wrap:anywhere}
+.kpi small{color:var(--muted);font-size:.8rem}
+.kpi.alerta{border-color:var(--signal)}
+.kpi.alerta b{color:var(--signal)}
+.duas{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:16px}
+@media (max-width:420px){.duas{grid-template-columns:1fr}}
+.barras{display:grid;gap:10px}
+.barra{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:2px 12px;align-items:baseline}
+.barra .nome{font-size:.9rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.barra .val{font:500 .86rem var(--f-mono);font-variant-numeric:tabular-nums}
+.barra .trilho{grid-column:1/-1;height:8px;background:var(--surface-2);border-radius:4px;overflow:hidden}
+.barra .trilho i{display:block;height:100%;background:var(--accent);border-radius:4px}
+.barra .sub{grid-column:1/-1;font-size:.76rem;color:var(--muted)}
+
+/* Ficha da requisição */
+.ficha{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:14px 20px}
+.ficha div{display:grid;gap:2px;min-width:0}
+.ficha dd{margin:0;font-weight:500;overflow-wrap:anywhere}
+.ficha dt{font-size:.72rem;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:600}
+.reqnum{font-family:var(--f-mono);font-weight:500;white-space:nowrap}
+.totais{display:flex;gap:18px;flex-wrap:wrap;font-size:.9rem}
+.totais b{font-family:var(--f-mono)}
+.grupo-func{margin-top:6px}
+.grupo-func h3{font-size:.8rem;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:14px 0 6px}
+.lista-trab{display:grid;gap:6px}
+.trab{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 12px;align-items:center;padding:10px 12px;border:1px solid var(--line);border-radius:6px;background:var(--surface)}
+.trab .n{font-weight:500;overflow-wrap:anywhere}
+.trab .d{font-size:.8rem;color:var(--muted)}
+.trab .lado{display:flex;gap:10px;align-items:center}
+.trab.bloq{opacity:.6}
+.aviso{font-size:.78rem;color:var(--signal)}
+
+/* Matriz de preços */
+.matriz td.cel{cursor:pointer;font-family:var(--f-mono);text-align:right;white-space:nowrap}
+.matriz td.cel:hover{background:var(--surface-2)}
+.matriz td.cel.min{background:var(--ok-soft);color:var(--ok);font-weight:600}
+.matriz td.cel.nada{color:var(--muted);text-align:center}
+.seg-ctl{display:inline-flex;border:1px solid var(--line);border-radius:6px;overflow:hidden;background:var(--surface)}
+.seg-ctl button{border:0;background:none;padding:8px 14px;cursor:pointer;font-weight:500}
+.seg-ctl button[aria-pressed="true"]{background:var(--accent);color:var(--accent-ink)}
+
+/* Modal e aviso */
+.modal-fundo{position:fixed;inset:0;background:rgba(5,12,18,.55);z-index:60;display:flex;align-items:flex-start;justify-content:center;overflow-y:auto;
+  padding-block:calc(40px + env(safe-area-inset-top,0px)) 40px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.modal{background:var(--surface);border-radius:10px;box-shadow:var(--shadow);width:100%;max-width:560px;display:grid;gap:16px;padding:22px;border:1px solid var(--line)}
+.modal .rodape{display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap}
+.modal .rodape .dir{display:flex;gap:8px;margin-left:auto}
+.erro{background:var(--bad-soft);color:var(--bad);border-radius:6px;padding:9px 12px;font-size:.88rem}
+.toasts{position:fixed;z-index:80;bottom:calc(16px + env(safe-area-inset-bottom,0px));right:max(16px,env(safe-area-inset-right,0px));display:grid;gap:8px;max-width:min(420px,calc(100vw - 32px))}
+.toast{background:var(--ink);color:var(--bg);padding:10px 14px;border-radius:6px;box-shadow:var(--shadow);font-size:.9rem}
+.toast.erro-t{background:var(--bad);color:#fff}
+.dif{font-size:.8rem;color:var(--muted)}
+.dif b{color:var(--ink);font-weight:500}
+</style>
+</head>
+<body>
+<div id="app"><div class="carregando">Carregando…</div></div>
+<div class="toasts" id="toasts" aria-live="polite"></div>
+<script>
+/* =====================================================================
+   CONFIGURAÇÃO — preencha para usar o banco real (Supabase).
+   Em branco = MODO DEMONSTRAÇÃO (dados de exemplo salvos só neste navegador).
+   A chave "anon public" pode ficar no código: quem protege os dados são as
+   regras de segurança (RLS) do banco.
+   ===================================================================== */
+const CONFIG = {
+  SUPABASE_URL: 'https://jpwizlsqmakvlasoauyd.supabase.co',
+  SUPABASE_ANON_KEY: 'sb_publishable_7ruFT3WMZl983tvuKvrsfQ_spyZ35WN'   // chave pública (Project Settings > API Keys > Publishable)
+};
+const SUPABASE_CDN = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js';
+
+/* ============================ Utilitários ============================ */
+const $ = (s, el = document) => el.querySelector(s);
+const $$ = (s, el = document) => [...el.querySelectorAll(s)];
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const brl = v => v == null || v === '' ? '—' : Number(v).toLocaleString('pt-BR', {style:'currency', currency:'BRL'});
+const n0 = v => Number(v || 0).toLocaleString('pt-BR');
+const pad = n => String(n).padStart(2, '0');
+const iso = d => d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+const hoje = () => iso(new Date());
+const inicioMes = () => hoje().slice(0, 8) + '01';
+const addDias = (s, n) => { const d = new Date(s + 'T12:00:00'); d.setDate(d.getDate() + n); return iso(d); };
+const fdata = s => s ? s.slice(8, 10) + '/' + s.slice(5, 7) + '/' + s.slice(0, 4) : '';
+const fdh = s => s ? new Date(s).toLocaleString('pt-BR', {dateStyle:'short', timeStyle:'short'}) : '';
+const DIAS = ['domingo','segunda','terça','quarta','quinta','sexta','sábado'];
+const dow = s => new Date(s + 'T12:00:00').getDay();
+const reqNum = id => 'REQ-' + String(id).padStart(5, '0');
+const TIPO_DIA = {UTIL:'Dia útil', DOM_FER:'Domingo/feriado'};
+const STATUS = {ABERTA:'Aberta', APROVADA:'Aprovada', CANCELADA:'Cancelada'};
+const ST_FECH = {EM_CONFERENCIA:'Em conferência', CONFERIDO:'Conferido', PAGO:'Pago'};
+const PERFIS = {ADMIN:'Administrador', SUPERVISOR:'Supervisor', FINANCEIRO:'Financeiro'};
+const fecNum = id => 'FEC-' + String(id).padStart(4, '0');
+const inicioOp = h => (h - 7 + 24) % 24;   // dia operacional começa às 07h
+const sobrepoe = (t1, t2) => { const a = inicioOp(t1.hora_inicio), b = inicioOp(t2.hora_inicio); return a < b + t2.horas && b < a + t1.horas; };
+const store = {
+  get(k){ try { return JSON.parse(localStorage.getItem(k)); } catch (e) { return null; } },
+  set(k, v){ try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} },
+  del(k){ try { localStorage.removeItem(k); } catch (e) {} }
+};
+function toast(msg, erro){
+  const t = document.createElement('div'); t.className = 'toast' + (erro ? ' erro-t' : ''); t.textContent = msg;
+  $('#toasts').appendChild(t); setTimeout(() => t.remove(), erro ? 6000 : 3200);
+}
+function carregarScript(src){ return new Promise((ok, falha) => { const s = document.createElement('script'); s.src = src; s.onload = ok; s.onerror = () => falha(new Error('Não foi possível carregar ' + src)); document.head.appendChild(s); }); }
+function filtrar(rows, o = {}){
+  let r = rows;
+  if (o.eq) for (const [k, v] of Object.entries(o.eq)) r = r.filter(x => x[k] === v);
+  if (o.gte) for (const [k, v] of Object.entries(o.gte)) r = r.filter(x => x[k] >= v);
+  if (o.lte) for (const [k, v] of Object.entries(o.lte)) r = r.filter(x => x[k] <= v);
+  if (o.order) for (const ord of [].concat(o.order).reverse()) {
+    const [c, dir] = ord.split(' '); const s = dir === 'desc' ? -1 : 1;
+    r = [...r].sort((a, b) => (a[c] > b[c] ? 1 : a[c] < b[c] ? -1 : 0) * s);
+  }
+  if (o.limit) r = r.slice(0, o.limit);
+  return r;
+}
+
+/* ============ Dados do MODO DEMONSTRAÇÃO (fictícios) ============
+   Empresas e valores abaixo são inventados. Os fornecedores e preços reais
+   ficam somente no Supabase (carga privada), nunca neste arquivo público. */
+const SEED_TURNOS = [
+  ['07x13','07h às 13h (6h diurno)',7,6,'DIURNO'], ['13x19','13h às 19h (6h diurno)',13,6,'DIURNO'],
+  ['19x01','19h às 01h (6h noturno)',19,6,'NOTURNO'], ['01x07','01h às 07h (6h noturno)',1,6,'NOTURNO'],
+  ['07x19','07h às 19h (12h diurno)',7,12,'DIURNO'], ['19x07','19h às 07h (12h noturno)',19,12,'NOTURNO']];
+const SEED_FUNCOES = ['OPERADOR DE EMPILHADEIRA','CONFERENTE','AUXILIAR'];
+const SEED_EMPRESAS = [['EMPRESA TESTE A',false,true],['EMPRESA TESTE B',false,true],['EMPRESA TESTE C',false,true],['EMPRESA TESTE D',false,true],['AVULSOS',true,true]];
+// valores fictícios na ordem dos turnos acima: 07x13, 13x19, 19x01, 01x07, 07x19, 19x07 (null = não fornece)
+const SEED_PRECOS = {
+  UTIL: {
+    'OPERADOR DE EMPILHADEIRA': {'EMPRESA TESTE A':[300,300,350,350,580,680],'EMPRESA TESTE B':[290,290,340,340,560,660],'EMPRESA TESTE C':[310,310,360,360,600,700],'EMPRESA TESTE D':null,'AVULSOS':[100,100,100,100,200,200]},
+    'CONFERENTE': {'EMPRESA TESTE A':[220,220,260,260,400,480],'EMPRESA TESTE B':[210,210,250,250,380,460],'EMPRESA TESTE C':[230,230,270,270,420,500],'EMPRESA TESTE D':[150,150,180,180,300,360],'AVULSOS':[80,80,80,80,160,160]},
+    'AUXILIAR': {'EMPRESA TESTE A':[200,200,240,240,380,450],'EMPRESA TESTE B':[190,190,230,230,360,430],'EMPRESA TESTE C':[210,210,250,250,400,470],'EMPRESA TESTE D':[140,140,170,170,280,340],'AVULSOS':[80,80,80,80,160,160]}
+  },
+  DOM_FER: {
+    'OPERADOR DE EMPILHADEIRA': {'EMPRESA TESTE A':[600,600,700,700,1160,1360],'EMPRESA TESTE B':[580,580,680,680,1120,1320],'EMPRESA TESTE C':[620,620,720,720,1200,1400],'EMPRESA TESTE D':null,'AVULSOS':[100,100,100,100,200,200]},
+    'CONFERENTE': {'EMPRESA TESTE A':[440,440,520,520,800,960],'EMPRESA TESTE B':[420,420,500,500,760,920],'EMPRESA TESTE C':[460,460,540,540,840,1000],'EMPRESA TESTE D':[300,300,360,360,600,720],'AVULSOS':[80,80,80,80,160,160]},
+    'AUXILIAR': {'EMPRESA TESTE A':[400,400,480,480,760,900],'EMPRESA TESTE B':[380,380,460,460,720,860],'EMPRESA TESTE C':[420,420,500,500,800,940],'EMPRESA TESTE D':[280,280,340,340,560,680],'AVULSOS':[80,80,80,80,160,160]}
+  }
+};
+const SEED_FERIADOS = [['2026-01-01','Confraternização Universal'],['2026-04-03','Sexta-feira Santa'],['2026-04-21','Tiradentes'],['2026-05-01','Dia do Trabalho'],['2026-06-04','Corpus Christi'],['2026-09-07','Independência'],['2026-10-12','Nossa Senhora Aparecida'],['2026-11-02','Finados'],['2026-11-15','Proclamação da República'],['2026-11-20','Consciência Negra'],['2026-12-25','Natal'],['2027-01-01','Confraternização Universal'],['2027-03-26','Sexta-feira Santa'],['2027-04-21','Tiradentes'],['2027-05-01','Dia do Trabalho'],['2027-05-27','Corpus Christi'],['2027-09-07','Independência'],['2027-10-12','Nossa Senhora Aparecida'],['2027-11-02','Finados'],['2027-11-15','Proclamação da República'],['2027-11-20','Consciência Negra'],['2027-12-25','Natal']];
+
+/* ===================== Banco DEMONSTRAÇÃO (navegador) =====================
+   Reproduz as mesmas regras do schema.sql para testar sem servidor. */
+function DemoDB(){
+  const KEY = 'controle_mo_seatrade_demo_v2', KSES = 'controle_mo_seatrade_sessao_v2';
+  let S = store.get(KEY), me = null;
+  const clone = o => JSON.parse(JSON.stringify(o));
+  const salvar = () => store.set(KEY, S);
+  const nid = t => (S.seq[t] = (S.seq[t] || 0) + 1);
+  const adm = () => me && me.perfil === 'ADMIN' && me.ativo;
+  const veVal = () => me && me.ativo && (me.perfil === 'ADMIN' || me.perfil === 'FINANCEIRO');
+  const podeReq = () => me && me.ativo && (me.perfil === 'ADMIN' || me.perfil === 'SUPERVISOR');
+  const fechada = rid => S.requisicao_itens.some(i => i.requisicao_id === rid && i.fechamento_id);
+  const MSG_FECH = 'Requisição incluída em fechamento do financeiro. Desfaça o fechamento antes de alterar.';
+  const valorSistema = fid => S.requisicao_itens.filter(i => i.fechamento_id === fid).reduce((s, i) => s + Number(i.valor_unitario), 0);
+  const falha = m => { throw new Error(m); };
+  const get = (t, id) => S[t].find(x => x.id === id);
+  const tipoDia = d => dow(d) === 0 || S.feriados.some(f => f.data === d) ? 'DOM_FER' : 'UTIL';
+  const audit = (t, acao, ant, nov) => { const r = nov || ant; S.auditoria.push({id:nid('auditoria'), tabela:t, registro_id:String(r.id ?? r.trabalhador_id ?? r.data), acao, usuario_id:me ? me.id : null, dados_antigos:ant ? clone(ant) : null, dados_novos:nov ? clone(nov) : null, em:new Date().toISOString()}); };
+
+  function regraItem(row){
+    const r = get('requisicoes', row.requisicao_id), t = get('turnos', r.turno_id), tb = get('trabalhadores', row.trabalhador_id);
+    if (!tb.ativo) falha(`Trabalhador ${tb.nome} está inativo.`);
+    if (!S.trabalhador_funcoes.some(x => x.trabalhador_id === tb.id && x.funcao_id === row.funcao_id)) falha(`${tb.nome} não está habilitado nesta função.`);
+    if (S.requisicao_itens.some(i => i.requisicao_id === row.requisicao_id && i.trabalhador_id === row.trabalhador_id && i.id !== row.id)) falha(`${tb.nome} já está nesta requisição.`);
+    row.empresa_id = tb.empresa_id; row.horas = t.horas;
+    const p = S.tabela_precos.find(p => p.empresa_id === tb.empresa_id && p.funcao_id === row.funcao_id && p.turno_id === r.turno_id && p.tipo_dia === r.tipo_dia && r.data >= p.vigencia_inicio && (!p.vigencia_fim || r.data <= p.vigencia_fim));
+    if (!p) falha(`Sem preço cadastrado para a empresa de ${tb.nome} nesta função/turno (${r.tipo_dia === 'DOM_FER' ? 'domingo/feriado' : 'dia útil'}).`);
+    row.valor_unitario = p.valor;
+    for (const i of S.requisicao_itens) {
+      if (i.trabalhador_id !== row.trabalhador_id || i.id === row.id) continue;
+      const r2 = get('requisicoes', i.requisicao_id);
+      if (r2.data !== r.data || r2.status === 'CANCELADA') continue;
+      const t2 = get('turnos', r2.turno_id);
+      if (sobrepoe(t, t2)) falha(`${tb.nome} já está escalado no turno ${t2.codigo} deste dia.`);
+    }
+    return row;
+  }
+  function pode(t, op, row){
+    if (!me || !me.ativo) return false;
+    if (adm()) return true;
+    if (t === 'fechamentos') return veVal() && op === 'update';
+    if (!podeReq()) return false;
+    if (t === 'navios') return op === 'insert';
+    if (t === 'requisicoes') return op === 'insert' || (op === 'update' && row.supervisor_id === me.id && row.status === 'ABERTA');
+    if (t === 'requisicao_itens') { const r = get('requisicoes', row.requisicao_id); return r && r.supervisor_id === me.id && r.status === 'ABERTA'; }
+    return false;
+  }
+  function unico(t, row, old){
+    const u = {empresas:['nome'], funcoes:['nome'], armazens:['nome'], turnos:['codigo'], navios:['nome','viagem'], feriados:['data'], trabalhadores:['cpf'], trabalhador_funcoes:['trabalhador_id','funcao_id']}[t];
+    if (u && !(t === 'trabalhadores' && !row.cpf) && S[t].some(x => x !== old && (row.id == null || x.id !== row.id) && u.every(k => (x[k] ?? null) === (row[k] ?? null))))
+      falha('Já existe um registro com esses dados.');
+    if (t === 'tabela_precos' && S.tabela_precos.some(p => p.id !== row.id && p.empresa_id === row.empresa_id && p.funcao_id === row.funcao_id && p.turno_id === row.turno_id && p.tipo_dia === row.tipo_dia
+        && p.vigencia_inicio <= (row.vigencia_fim || '9999-12-31') && row.vigencia_inicio <= (p.vigencia_fim || '9999-12-31')))
+      falha('Já existe preço vigente para essa combinação no período informado.');
+  }
+  const REFS = {empresas:[['trabalhadores','empresa_id'],['tabela_precos','empresa_id'],['requisicao_itens','empresa_id']], funcoes:[['trabalhador_funcoes','funcao_id'],['tabela_precos','funcao_id'],['requisicao_itens','funcao_id']], turnos:[['tabela_precos','turno_id'],['requisicoes','turno_id']], armazens:[['requisicoes','armazem_id']], navios:[['requisicoes','navio_id']], trabalhadores:[['requisicao_itens','trabalhador_id']]};
+
+  function visao(t){
+    const nome = (tb, id) => (get(tb, id) || {}).nome;
+    if (t === 'vw_requisicoes') return S.requisicoes.map(r => {
+      const tu = get('turnos', r.turno_id), na = get('navios', r.navio_id), it = S.requisicao_itens.filter(i => i.requisicao_id === r.id);
+      return {...r, turno:tu.codigo, periodo:tu.periodo, horas_turno:tu.horas, navio:na.nome, viagem:na.viagem, armazem:nome('armazens', r.armazem_id),
+        supervisor:nome('usuarios', r.supervisor_id), aprovado_por_nome:r.aprovado_por ? nome('usuarios', r.aprovado_por) : null,
+        qtd_trabalhadores:it.length, valor_total:veVal() ? it.reduce((s, i) => s + Number(i.valor_unitario), 0) : null,
+        em_fechamento:it.some(i => i.fechamento_id)};
+    });
+    if (t === 'vw_fechamentos') return veVal() ? S.fechamentos.map(f => {
+      const it = S.requisicao_itens.filter(i => i.fechamento_id === f.id);
+      return {...clone(f), empresa:nome('empresas', f.empresa_id), diferenca:f.nf_valor != null ? Math.round((f.nf_valor - f.valor_sistema) * 100) / 100 : null,
+        qtd_diarias:it.length, horas:it.reduce((s, i) => s + i.horas, 0), criado_por_nome:nome('usuarios', f.criado_por),
+        conferido_por_nome:f.conferido_por ? nome('usuarios', f.conferido_por) : null, pago_por_nome:f.pago_por ? nome('usuarios', f.pago_por) : null};
+    }) : [];
+    if (t === 'vw_auditoria') return veVal() ? S.auditoria.map(a => ({...clone(a), usuario:a.usuario_id ? nome('usuarios', a.usuario_id) : null})) : [];
+    return S.requisicao_itens.map(i => {
+      const r = get('requisicoes', i.requisicao_id), tu = get('turnos', r.turno_id), na = get('navios', r.navio_id), tb = get('trabalhadores', i.trabalhador_id);
+      return {id:i.id, requisicao_id:r.id, data:r.data, tipo_dia:r.tipo_dia, status:r.status, turno_id:r.turno_id, turno:tu.codigo, periodo:tu.periodo, horas:i.horas,
+        navio_id:r.navio_id, navio:na.nome, viagem:na.viagem, armazem_id:r.armazem_id, armazem:nome('armazens', r.armazem_id), trabalhador_id:tb.id, trabalhador:tb.nome, cnpj_mei:tb.cnpj_mei,
+        funcao_id:i.funcao_id, funcao:nome('funcoes', i.funcao_id), empresa_id:i.empresa_id, empresa:nome('empresas', i.empresa_id), supervisor_id:r.supervisor_id,
+        supervisor:nome('usuarios', r.supervisor_id), valor:veVal() ? i.valor_unitario : null, observacao:i.observacao, fechamento_id:i.fechamento_id || null};
+    });
+  }
+
+  // mesmas regras do trigger fn_fechamento_antes
+  function regraFechamento(old, nov){
+    Object.assign(nov, {empresa_id:old.empresa_id, data_inicio:old.data_inicio, data_fim:old.data_fim, criado_por:old.criado_por, criado_em:old.criado_em});
+    nov.valor_sistema = Math.round(valorSistema(old.id) * 100) / 100;
+    if (nov.nf_valor != null && nov.nf_valor !== '') nov.nf_valor = Number(nov.nf_valor);
+    const nf = o => JSON.stringify([o.nf_numero || null, o.nf_data || null, o.nf_valor ?? null, o.justificativa || null]);
+    if (old.status !== 'EM_CONFERENCIA' && nov.status === old.status && nf(old) !== nf(nov)) falha('Volte o fechamento para "Em conferência" para alterar os dados da NF.');
+    if (old.status === 'PAGO' && nov.status !== 'PAGO' && !adm()) falha('Somente o administrador pode estornar um pagamento.');
+    if (nov.status === 'CONFERIDO' || nov.status === 'PAGO') {
+      if (!String(nov.nf_numero || '').trim() || nov.nf_valor == null) falha('Informe o número e o valor da NF antes de conferir.');
+      if (Math.abs(nov.nf_valor - nov.valor_sistema) > 0.004 && !String(nov.justificativa || '').trim())
+        falha(`NF (${brl(nov.nf_valor)}) diferente do sistema (${brl(nov.valor_sistema)}). Informe a justificativa.`);
+    }
+    if (nov.status === 'PAGO' && old.status === 'EM_CONFERENCIA') falha('Confira o fechamento antes de registrar o pagamento.');
+    if (nov.status === 'EM_CONFERENCIA') { nov.conferido_por = null; nov.conferido_em = null; }
+    else if (old.status === 'EM_CONFERENCIA') { nov.conferido_por = me.id; nov.conferido_em = new Date().toISOString(); }
+    if (nov.status === 'PAGO') { if (old.status !== 'PAGO') { nov.pago_por = me.id; nov.pago_em = new Date().toISOString(); nov.data_pagamento = nov.data_pagamento || hoje(); } }
+    else { nov.pago_por = null; nov.pago_em = null; nov.data_pagamento = null; }
+    return nov;
+  }
+
+  const api = {
+    modo: 'demo',
+    async list(t, o = {}){
+      if (!me) return [];
+      let rows;
+      if (t.startsWith('vw_')) rows = visao(t);
+      else if (t === 'tabela_precos' || t === 'auditoria' || t === 'fechamentos') rows = veVal() ? clone(S[t]) : [];
+      else if (t === 'usuarios') rows = clone(S.usuarios.filter(u => adm() || u.id === me.id)).map(u => (delete u.senha, u));
+      else rows = clone(S[t]);
+      return filtrar(rows, o);
+    },
+    async insert(t, dados){
+      const lista = [].concat(dados), saida = [];
+      for (let row of lista) {
+        row = clone(row);
+        if (t === 'requisicoes') { row.supervisor_id = me.id; row.status = 'ABERTA'; row.tipo_dia = tipoDia(row.data); row.criado_em = new Date().toISOString(); row.aprovado_por = null; row.aprovado_em = null; }
+        if (!pode(t, 'insert', row)) falha('Você não tem permissão para esta operação.');
+        if (t === 'requisicao_itens') regraItem(row);
+        if (t === 'trabalhadores' || t === 'empresas' || t === 'navios' || t === 'armazens' || t === 'funcoes' || t === 'turnos') row.ativo = row.ativo ?? true;
+        if (t !== 'feriados' && t !== 'trabalhador_funcoes') row.id = nid(t);
+        unico(t, row);
+        S[t].push(row); audit(t, 'INSERT', null, row); saida.push(clone(row));
+      }
+      salvar(); return saida[0];
+    },
+    async update(t, match, patch){
+      const alvos = S[t].filter(x => Object.entries(match).every(([k, v]) => x[k] === v));
+      if (!alvos.length || !alvos.every(x => pode(t, 'update', x))) falha('Você não tem permissão para alterar este registro.');
+      const backup = clone(S);
+      try {
+        for (const old of alvos) {
+          const nov = {...clone(old), ...patch};
+          if (t === 'fechamentos') regraFechamento(old, nov);
+          if (t === 'requisicao_itens' && old.fechamento_id) falha('Diária incluída em fechamento do financeiro; não pode ser alterada.');
+          if (t === 'requisicoes' && fechada(old.id) && ['status','data','turno_id','navio_id','armazem_id'].some(k => nov[k] !== old[k])) falha(MSG_FECH);
+          if (t === 'requisicoes') {
+            nov.tipo_dia = tipoDia(nov.data);
+            if (!adm() && !['ABERTA','CANCELADA'].includes(nov.status)) falha('Somente o administrador pode aprovar requisições.');
+            if (nov.status === 'APROVADA' && old.status !== 'APROVADA') {
+              if (!S.requisicao_itens.some(i => i.requisicao_id === old.id)) falha('Não é possível aprovar uma requisição sem trabalhadores.');
+              nov.aprovado_por = me.id; nov.aprovado_em = new Date().toISOString();
+            } else if (nov.status !== 'APROVADA') { nov.aprovado_por = null; nov.aprovado_em = null; }
+            if (nov.status === 'CANCELADA' && !String(nov.motivo_cancelamento || '').trim()) falha('Informe o motivo do cancelamento.');
+          }
+          if (t === 'requisicao_itens') regraItem(nov);
+          if (t === 'usuarios' && !adm()) falha('Você não tem permissão para alterar este registro.');
+          unico(t, nov, old);
+          S[t][S[t].indexOf(old)] = nov; audit(t, 'UPDATE', old, nov);
+          if (t === 'requisicoes' && (nov.data !== old.data || nov.turno_id !== old.turno_id))
+            for (const i of S.requisicao_itens.filter(i => i.requisicao_id === nov.id)) { const ni = regraItem({...i}); S.requisicao_itens[S.requisicao_itens.indexOf(i)] = ni; audit('requisicao_itens', 'UPDATE', i, ni); }
+        }
+      } catch (e) { S = backup; throw e; }
+      salvar();
+    },
+    async remove(t, match){
+      const alvos = S[t].filter(x => Object.entries(match).every(([k, v]) => x[k] === v));
+      if (!alvos.length || !alvos.every(x => pode(t, 'delete', x))) falha('Você não tem permissão para excluir este registro.');
+      for (const x of alvos) {
+        if ((t === 'requisicao_itens' && x.fechamento_id) || (t === 'requisicoes' && fechada(x.id))) falha('Diária incluída em fechamento do financeiro; não pode ser excluída.');
+        for (const [rt, col] of REFS[t] || []) if (S[rt].some(r => r[col] === x.id)) falha('Registro em uso: não pode ser excluído. Inative em vez de excluir.');
+        if (t === 'trabalhadores') S.trabalhador_funcoes = S.trabalhador_funcoes.filter(f => f.trabalhador_id !== x.id);
+        if (t === 'requisicoes') S.requisicao_itens = S.requisicao_itens.filter(i => i.requisicao_id !== x.id);
+        S[t].splice(S[t].indexOf(x), 1); audit(t, 'DELETE', x, null);
+      }
+      salvar();
+    },
+    async login(email, senha){
+      const u = S.usuarios.find(u => u.email.toLowerCase() === String(email).trim().toLowerCase() && u.senha === senha);
+      if (!u) falha('E-mail ou senha incorretos.');
+      if (!u.ativo) falha('Seu acesso ainda não foi liberado pelo administrador.');
+      me = u; store.set(KSES, u.id); return {...u, senha:undefined};
+    },
+    async sessao(){ const id = store.get(KSES); const u = S.usuarios.find(u => u.id === id && u.ativo); me = u || null; return u ? {...u, senha:undefined} : null; },
+    async logout(){ me = null; store.del(KSES); },
+    async criarUsuario({nome, email, senha, perfil}){
+      if (!adm()) falha('Você não tem permissão para esta operação.');
+      if (S.usuarios.some(u => u.email.toLowerCase() === email.toLowerCase())) falha('Já existe um usuário com este e-mail.');
+      const u = {id:'u' + nid('usuarios'), nome, email, senha, perfil, ativo:true, criado_em:new Date().toISOString()};
+      S.usuarios.push(u); audit('usuarios', 'INSERT', null, {...u, senha:undefined}); salvar();
+    },
+    async rpc(nome, a){
+      if (!veVal()) falha('Você não tem permissão para esta operação.');
+      if (nome === 'gerar_fechamento') {
+        if (a.p_fim < a.p_inicio) falha('A data final é anterior à inicial.');
+        const alvo = S.requisicao_itens.filter(i => { const r = get('requisicoes', i.requisicao_id); return i.empresa_id === a.p_empresa_id && r.status === 'APROVADA' && r.data >= a.p_inicio && r.data <= a.p_fim && !i.fechamento_id; });
+        if (!alvo.length) falha('Nenhuma diária aprovada e ainda não fechada para esta empresa no período.');
+        const f = {id:nid('fechamentos'), empresa_id:a.p_empresa_id, data_inicio:a.p_inicio, data_fim:a.p_fim, status:'EM_CONFERENCIA', nf_numero:null, nf_data:null, nf_valor:null,
+          valor_sistema:0, justificativa:null, data_pagamento:null, observacao:null, criado_por:me.id, criado_em:new Date().toISOString(), conferido_por:null, conferido_em:null, pago_por:null, pago_em:null};
+        alvo.forEach(i => i.fechamento_id = f.id);
+        f.valor_sistema = Math.round(valorSistema(f.id) * 100) / 100;
+        S.fechamentos.push(f); audit('fechamentos', 'INSERT', null, f); salvar(); return f.id;
+      }
+      if (nome === 'desfazer_fechamento') {
+        const f = S.fechamentos.find(x => x.id === a.p_id && x.status === 'EM_CONFERENCIA');
+        if (!f) falha('Só é possível desfazer um fechamento "Em conferência".');
+        S.requisicao_itens.forEach(i => { if (i.fechamento_id === f.id) i.fechamento_id = null; });
+        S.fechamentos.splice(S.fechamentos.indexOf(f), 1); audit('fechamentos', 'DELETE', f, null); salvar(); return null;
+      }
+      falha('Operação desconhecida.');
+    },
+    resetar(){ store.del(KEY); S = null; iniciar(); }
+  };
+
+  function iniciar(){
+    if (S && S.v === 2) return;
+    S = {v:2, seq:{}, usuarios:[], empresas:[], funcoes:[], turnos:[], armazens:[], navios:[], feriados:[], trabalhadores:[], trabalhador_funcoes:[], tabela_precos:[], requisicoes:[], requisicao_itens:[], fechamentos:[], auditoria:[]};
+    S.usuarios.push({id:'u1', nome:'Administrador (exemplo)', email:'admin@demo', senha:'admin123', perfil:'ADMIN', ativo:true, criado_em:new Date().toISOString()},
+                    {id:'u2', nome:'Supervisor (exemplo)', email:'supervisor@demo', senha:'sup123', perfil:'SUPERVISOR', ativo:true, criado_em:new Date().toISOString()},
+                    {id:'u3', nome:'Financeiro (exemplo)', email:'financeiro@demo', senha:'fin123', perfil:'FINANCEIRO', ativo:true, criado_em:new Date().toISOString()});
+    S.seq.usuarios = 3;
+    me = S.usuarios[0];
+    const ins = (t, r) => { r.id = nid(t); S[t].push(r); return r; };
+    SEED_FUNCOES.forEach(n => ins('funcoes', {nome:n, ativo:true}));
+    SEED_TURNOS.forEach(([c, d, h, hs, p]) => ins('turnos', {codigo:c, descricao:d, hora_inicio:h, horas:hs, periodo:p, ativo:true}));
+    SEED_EMPRESAS.forEach(([n, epi, l]) => ins('empresas', {nome:n, cnpj:'', contato:'', telefone:'', email:'', fornece_epi:epi, fornece_lanche:l, observacao:'', ativo:true}));
+    ['ARMAZÉM 1','ARMAZÉM 2','ARMAZÉM 3','ARMAZÉM 4','PÁTIO'].forEach(n => ins('armazens', {nome:n, ativo:true}));
+    SEED_FERIADOS.forEach(([d, n]) => S.feriados.push({data:d, descricao:n}));
+    const id = (t, campo, v) => S[t].find(x => x[campo] === v).id;
+    for (const [tipo, fs] of Object.entries(SEED_PRECOS)) for (const [fn, es] of Object.entries(fs)) for (const [en, vals] of Object.entries(es)) if (vals)
+      vals.forEach((v, i) => ins('tabela_precos', {empresa_id:id('empresas', 'nome', en), funcao_id:id('funcoes', 'nome', fn), turno_id:id('turnos', 'codigo', SEED_TURNOS[i][0]), tipo_dia:tipo, valor:v, vigencia_inicio:'2026-01-01', vigencia_fim:null}));
+    [['NAVIO TESTE 1','026N'],['NAVIO TESTE 2','114S'],['NAVIO TESTE 3','008E']].forEach(([n, v]) => ins('navios', {nome:n, viagem:v, eta:null, observacao:'Exemplo', ativo:true}));
+    const F = n => id('funcoes', 'nome', n), E = n => id('empresas', 'nome', n);
+    [['Adriano Lopes','EMPRESA TESTE A',['OPERADOR DE EMPILHADEIRA','AUXILIAR']],['Bruno Teixeira','EMPRESA TESTE A',['AUXILIAR']],['Carla Nunes','EMPRESA TESTE A',['CONFERENTE','AUXILIAR']],
+     ['Diego Farias','EMPRESA TESTE B',['OPERADOR DE EMPILHADEIRA']],['Elton Ramos','EMPRESA TESTE B',['AUXILIAR']],['Fábio Moraes','EMPRESA TESTE C',['CONFERENTE']],['Gilson Prado','EMPRESA TESTE C',['AUXILIAR','OPERADOR DE EMPILHADEIRA']],
+     ['Helena Duarte','EMPRESA TESTE D',['CONFERENTE']],['Ivan Barros','EMPRESA TESTE D',['AUXILIAR']],['Jonas Ribeiro','EMPRESA TESTE D',['AUXILIAR']],['Kleber Souza','AVULSOS',['AUXILIAR','CONFERENTE']],['Luan Pires','AVULSOS',['AUXILIAR']]]
+     .forEach(([n, e, fs], k) => { const t = ins('trabalhadores', {nome:n + ' (exemplo)', cpf:'', cnpj_mei:'', empresa_id:E(e), telefone:'', chave_pix:'', observacao:'', ativo:true}); fs.forEach(f => S.trabalhador_funcoes.push({trabalhador_id:t.id, funcao_id:F(f)})); });
+    // algumas requisições de exemplo no mês corrente
+    const dia = k => { const d = addDias(hoje(), -k); return d < inicioMes() ? inicioMes() : d; };
+    const T = c => id('turnos', 'codigo', c), N = n => id('navios', 'nome', n), A = n => id('armazens', 'nome', n);
+    const exemplos = [
+      [dia(4),'07x13','NAVIO TESTE 1','ARMAZÉM 1',[[1,'OPERADOR DE EMPILHADEIRA'],[2,'AUXILIAR'],[3,'CONFERENTE']],'u2','APROVADA'],
+      [dia(4),'13x19','NAVIO TESTE 1','ARMAZÉM 1',[[4,'OPERADOR DE EMPILHADEIRA'],[5,'AUXILIAR'],[6,'CONFERENTE']],'u2','APROVADA'],
+      [dia(3),'19x07','NAVIO TESTE 2','PÁTIO',[[7,'OPERADOR DE EMPILHADEIRA'],[8,'CONFERENTE'],[9,'AUXILIAR'],[10,'AUXILIAR']],'u2','APROVADA'],
+      [dia(2),'07x19','NAVIO TESTE 3','ARMAZÉM 2',[[1,'OPERADOR DE EMPILHADEIRA'],[11,'CONFERENTE'],[12,'AUXILIAR'],[2,'AUXILIAR']],'u2','APROVADA'],
+      [dia(1),'07x13','NAVIO TESTE 3','ARMAZÉM 2',[[4,'OPERADOR DE EMPILHADEIRA'],[3,'CONFERENTE'],[5,'AUXILIAR']],'u2','ABERTA'],
+      [hoje(),'13x19','NAVIO TESTE 2','ARMAZÉM 3',[[1,'AUXILIAR'],[9,'AUXILIAR']],'u2','ABERTA']];
+    for (const [d, tu, na, ar, its, sup, st] of exemplos) {
+      const r = ins('requisicoes', {data:d, turno_id:T(tu), navio_id:N(na), armazem_id:A(ar), tipo_dia:tipoDia(d), supervisor_id:sup, status:'ABERTA', observacao:'', motivo_cancelamento:null, aprovado_por:null, aprovado_em:null, criado_em:new Date().toISOString()});
+      for (const [tb, fn] of its) { try { const it = regraItem({requisicao_id:r.id, trabalhador_id:tb, funcao_id:F(fn), observacao:''}); ins('requisicao_itens', it); } catch (e) {} }
+      if (st === 'APROVADA' && S.requisicao_itens.some(i => i.requisicao_id === r.id)) { r.status = 'APROVADA'; r.aprovado_por = 'u1'; r.aprovado_em = new Date().toISOString(); }
+    }
+    // um fechamento de exemplo (EMPRESA TESTE B) em conferência
+    const pj = E('EMPRESA TESTE B'), itPJ = S.requisicao_itens.filter(i => i.empresa_id === pj && get('requisicoes', i.requisicao_id).status === 'APROVADA');
+    if (itPJ.length) {
+      const f = {id:nid('fechamentos'), empresa_id:pj, data_inicio:inicioMes(), data_fim:hoje(), status:'EM_CONFERENCIA', nf_numero:null, nf_data:null, nf_valor:null, valor_sistema:0,
+        justificativa:null, data_pagamento:null, observacao:'Exemplo', criado_por:'u3', criado_em:new Date().toISOString(), conferido_por:null, conferido_em:null, pago_por:null, pago_em:null};
+      itPJ.forEach(i => i.fechamento_id = f.id); f.valor_sistema = valorSistema(f.id); S.fechamentos.push(f);
+    }
+    me = null; salvar();
+  }
+  iniciar();
+  return api;
+}
+
+/* ========================= Banco SUPABASE (real) ========================= */
+function SupaDB(cfg){
+  const sb = window.supabase.createClient(cfg.url, cfg.key);
+  const SEM_SELECT = ['requisicao_itens', 'trabalhador_funcoes'];
+  const msg = e => {
+    const m = e && e.message ? e.message : String(e);
+    if (/duplicate key/i.test(m)) return 'Já existe um registro com esses dados.';
+    if (/exclusion constraint|conflicting key value/i.test(m)) return 'Já existe preço vigente para essa combinação no período informado.';
+    if (/foreign key/i.test(m)) return 'Registro em uso: não pode ser excluído. Inative em vez de excluir.';
+    if (/invalid login/i.test(m)) return 'E-mail ou senha incorretos.';
+    if (/permission denied|row-level security/i.test(m)) return 'Você não tem permissão para esta operação.';
+    return m;
+  };
+  const erro = e => { throw new Error(msg(e)); };
+  async function perfil(){
+    const {data:{user}} = await sb.auth.getUser(); if (!user) return null;
+    const {data, error} = await sb.from('usuarios').select('*').eq('id', user.id).maybeSingle(); if (error) erro(error);
+    return data;
+  }
+  function aplicar(q, o){
+    if (o.eq) for (const [k, v] of Object.entries(o.eq)) q = q.eq(k, v);
+    if (o.gte) for (const [k, v] of Object.entries(o.gte)) q = q.gte(k, v);
+    if (o.lte) for (const [k, v] of Object.entries(o.lte)) q = q.lte(k, v);
+    if (o.order) for (const ord of [].concat(o.order)) { const [c, dir] = ord.split(' '); q = q.order(c, {ascending:dir !== 'desc'}); }
+    return q;
+  }
+  return {
+    modo: 'supabase',
+    async list(t, o = {}){
+      const lote = 1000, saida = [];
+      for (let ini = 0; ; ini += lote) {
+        let q = aplicar(sb.from(t).select('*'), o);
+        const fim = o.limit ? Math.min(o.limit, ini + lote) - 1 : ini + lote - 1;
+        const {data, error} = await q.range(ini, fim); if (error) erro(error);
+        saida.push(...data);
+        if (data.length < lote || (o.limit && saida.length >= o.limit)) break;
+      }
+      return saida;
+    },
+    async insert(t, row){
+      let q = sb.from(t).insert(row); if (!SEM_SELECT.includes(t)) q = q.select();
+      const {data, error} = await q; if (error) erro(error);
+      return data ? data[0] : null;
+    },
+    async update(t, match, patch){
+      const {error, count} = await sb.from(t).update(patch, {count:'exact'}).match(match); if (error) erro(error);
+      if (!count) throw new Error('Você não tem permissão para alterar este registro.');
+    },
+    async remove(t, match){
+      const {error, count} = await sb.from(t).delete({count:'exact'}).match(match); if (error) erro(error);
+      if (!count) throw new Error('Você não tem permissão para excluir este registro.');
+    },
+    async login(email, senha){
+      const {error} = await sb.auth.signInWithPassword({email:String(email).trim(), password:senha}); if (error) erro(error);
+      const u = await perfil();
+      if (!u || !u.ativo) { await sb.auth.signOut(); throw new Error('Seu acesso ainda não foi liberado pelo administrador.'); }
+      return u;
+    },
+    async rpc(nome, args){ const {data, error} = await sb.rpc(nome, args); if (error) erro(error); return data; },
+    async sessao(){ const {data:{session}} = await sb.auth.getSession(); if (!session) return null; const u = await perfil(); return u && u.ativo ? u : null; },
+    async logout(){ await sb.auth.signOut(); },
+    async criarUsuario({nome, email, senha, perfil}){
+      // cliente separado para não derrubar a sessão do administrador
+      const tmp = window.supabase.createClient(cfg.url, cfg.key, {auth:{persistSession:false, autoRefreshToken:false, detectSessionInUrl:false, storageKey:'controle-mo-cadastro'}});
+      const {data, error} = await tmp.auth.signUp({email:email.trim(), password:senha, options:{data:{nome}}}); if (error) erro(error);
+      const id = data.user && data.user.id; if (!id) throw new Error('Não foi possível criar o usuário.');
+      try { await this.update('usuarios', {id}, {nome, perfil, ativo:true}); }
+      catch (e) { throw new Error('O e-mail pode já estar cadastrado. Confira em Usuários ou no painel do Supabase.'); }
+    }
+  };
+}
+
+/* =============================== Aplicação =============================== */
+let DB, ME = null, C = {};
+const app = $('#app');
+const isAdmin = () => ME && ME.perfil === 'ADMIN';
+const isFin = () => ME && ME.perfil === 'FINANCEIRO';
+const veValores = () => isAdmin() || isFin();
+const podeRequisitar = () => ME && (ME.perfil === 'ADMIN' || ME.perfil === 'SUPERVISOR');
+const A = 'ADMIN', S_ = 'SUPERVISOR', F = 'FINANCEIRO';
+const permite = perfis => !perfis || perfis.includes(ME.perfil);
+const byId = (t, id) => (C[t] || []).find(x => x.id === id) || {};
+const ordTurnos = l => [...l].sort((a, b) => a.horas - b.horas || inicioOp(a.hora_inicio) - inicioOp(b.hora_inicio));
+const ordNome = l => [...l].sort((a, b) => String(a.nome).localeCompare(String(b.nome), 'pt-BR'));
+const funcoesDe = tid => C.trabalhador_funcoes.filter(f => f.trabalhador_id === tid).map(f => f.funcao_id);
+const tipoDiaLocal = d => d && (dow(d) === 0 || C.feriados.some(f => f.data === d)) ? 'DOM_FER' : 'UTIL';
+const precoVigente = (emp, fun, tur, tipo, data) => C.tabela_precos.find(p => p.empresa_id === emp && p.funcao_id === fun && p.turno_id === tur && p.tipo_dia === tipo && data >= p.vigencia_inicio && (!p.vigencia_fim || data <= p.vigencia_fim));
+
+async function carregarCache(lista){
+  const ts = lista || ['empresas','funcoes','turnos','armazens','navios','feriados','trabalhadores','trabalhador_funcoes','tabela_precos'];
+  const rs = await Promise.all(ts.map(t => DB.list(t)));
+  ts.forEach((t, i) => C[t] = rs[i]);
+  C.turnos = ordTurnos(C.turnos); C.empresas = ordNome(C.empresas); C.funcoes = ordNome(C.funcoes);
+  C.armazens = ordNome(C.armazens); C.navios = ordNome(C.navios); C.trabalhadores = ordNome(C.trabalhadores);
+}
+
+async function boot(){
+  if (CONFIG.SUPABASE_URL && CONFIG.SUPABASE_ANON_KEY) {
+    try { await carregarScript(SUPABASE_CDN); DB = SupaDB({url:CONFIG.SUPABASE_URL, key:CONFIG.SUPABASE_ANON_KEY}); }
+    catch (e) { app.innerHTML = `<div class="vazio">Não foi possível conectar ao banco. Verifique a internet e a configuração.<br>${esc(e.message)}</div>`; return; }
+  } else DB = DemoDB();
+  try { ME = await DB.sessao(); } catch (e) { ME = null; }
+  ME ? entrar() : telaLogin();
+}
+
+/* ------------------------------- Login ------------------------------- */
+function telaLogin(){
+  const demo = DB.modo === 'demo';
+  app.innerHTML = `
+  <div class="login">
+    <section class="login-marca">
+      <div style="display:grid;gap:14px">
+        <span class="rot" style="color:var(--nav-dim)">Mão de obra portuária</span>
+        <h1>Controle de Mão de Obra Seatrade</h1>
+        <p>Requisição de trabalhadores por navio, armazém e turno, com preço calculado pela tabela de cada fornecedor.</p>
+      </div>
+      <div class="dia-op" aria-label="Turnos do dia operacional">
+        <span class="rot" style="color:var(--nav-dim)">Dia operacional · 07h às 07h</span>
+        <div class="faixa"><span class="seg">07x13</span><span class="seg">13x19</span><span class="seg n">19x01</span><span class="seg n">01x07</span></div>
+        <div class="doze"><span>07x19 · 12h diurno</span><span>19x07 · 12h noturno</span></div>
+      </div>
+    </section>
+    <section class="login-form">
+      <form id="f-login" novalidate>
+        <div><h2>Entrar</h2><p class="muted" style="margin:4px 0 0">Use o e-mail e a senha cadastrados pelo administrador.</p></div>
+        <div class="campo"><label for="l-email">E-mail</label><input id="l-email" type="email" autocomplete="username" required></div>
+        <div class="campo"><label for="l-senha">Senha</label><input id="l-senha" type="password" autocomplete="current-password" required></div>
+        <div id="l-erro" class="erro" hidden></div>
+        <button class="btn primario" type="submit">Entrar</button>
+        ${demo ? `<div class="demo-box"><span class="rot">Modo demonstração</span>
+          <span class="muted" style="font-size:.86rem">Dados de exemplo salvos só neste navegador. Escolha um perfil para testar:</span>
+          <div class="linha"><button type="button" class="btn peq" data-demo="admin@demo|admin123">Entrar como administrador</button>
+          <button type="button" class="btn peq" data-demo="supervisor@demo|sup123">Entrar como supervisor</button>
+          <button type="button" class="btn peq" data-demo="financeiro@demo|fin123">Entrar como financeiro</button></div></div>` : ''}
+      </form>
+    </section>
+  </div>`;
+  const tentar = async (email, senha) => {
+    const e = $('#l-erro'); e.hidden = true;
+    try { ME = await DB.login(email, senha); entrar(); }
+    catch (err) { e.textContent = err.message; e.hidden = false; }
+  };
+  $('#f-login').addEventListener('submit', ev => { ev.preventDefault(); tentar($('#l-email').value, $('#l-senha').value); });
+  $$('[data-demo]').forEach(b => b.onclick = () => { const [e, s] = b.dataset.demo.split('|'); tentar(e, s); });
+}
+
+/* ------------------------------- Shell ------------------------------- */
+// [rota, título, perfis que veem] — sem perfis = todos
+const MENU = [
+  ['Operação', [['painel','Painel',[A,F]],['requisicoes','Requisições'],['nova','Nova requisição',[A,S_]]]],
+  ['Financeiro', [['fechamentos','Fechamentos',[A,F]]]],
+  ['Cadastros', [['trabalhadores','Trabalhadores',[A,F]],['empresas','Empresas',[A,F]],['precos','Tabela de preços',[A,F]],['navios','Navios'],['armazens','Armazéns',[A]],['funcoes','Funções',[A]],['turnos','Turnos',[A]],['feriados','Feriados',[A,F]]]],
+  ['Administração', [['usuarios','Usuários',[A]],['auditoria','Auditoria',[A,F]]]]
+];
+async function entrar(){
+  app.innerHTML = '<div class="carregando">Carregando cadastros…</div>';
+  try { await carregarCache(); } catch (e) { app.innerHTML = `<div class="vazio">${esc(e.message)}</div>`; return; }
+  const itens = g => g.filter(([, , p]) => permite(p));
+  app.innerHTML = `
+  <div class="shell" id="shell">
+    <nav class="nav" id="nav" aria-label="Menu principal">
+      <div class="marca">Controle de Mão de Obra Seatrade<small>Mão de obra por navio e turno</small></div>
+      ${MENU.map(([g, l]) => itens(l).length ? `<div class="grupo">${g}</div>` + itens(l).map(([h, t]) => `<a href="#${h}" data-r="${h}">${t}</a>`).join('') : '').join('')}
+      <div class="rodape">
+        <div><b>${esc(ME.nome)}</b><div style="font-size:.8rem;color:var(--nav-dim)">${PERFIS[ME.perfil] || ME.perfil}</div></div>
+        ${DB.modo === 'demo' && isAdmin() ? '<button id="b-reset" type="button">Restaurar dados de exemplo</button>' : ''}
+        <button id="b-sair" type="button">Sair</button>
+      </div>
+    </nav>
+    <div style="min-width:0">
+      <div class="topo"><button id="b-menu" type="button" aria-label="Abrir menu"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button><b id="topo-t">Controle de Mão de Obra Seatrade</b></div>
+      <main id="main"></main>
+    </div>
+  </div>`;
+  $('#b-sair').onclick = async () => { await DB.logout(); ME = null; C = {}; location.hash = ''; telaLogin(); };
+  if ($('#b-reset')) $('#b-reset').onclick = () => confirmar('Restaurar dados de exemplo', 'Todos os dados desta demonstração serão apagados e recriados.', 'Restaurar', async () => { DB.resetar(); await DB.logout(); ME = null; telaLogin(); }, true);
+  $('#b-menu').onclick = () => alternarMenu(true);
+  window.onhashchange = rotear;
+  rotear();
+}
+function alternarMenu(abrir){
+  const sh = $('#shell'); sh.classList.toggle('aberto', abrir);
+  const v = $('.veu'); if (abrir && !v) { const d = document.createElement('div'); d.className = 'veu'; d.onclick = () => alternarMenu(false); sh.appendChild(d); }
+  if (!abrir && v) v.remove();
+}
+const ROTAS = {
+  painel:{t:'Painel', p:[A,F], fn:() => vPainel()}, requisicoes:{t:'Requisições', fn:() => vRequisicoes()}, nova:{t:'Nova requisição', p:[A,S_], fn:() => vNova()},
+  fechamentos:{t:'Fechamentos', p:[A,F], fn:() => vFechamentos()},
+  trabalhadores:{t:'Trabalhadores', p:[A,F], fn:() => vTrabalhadores()}, precos:{t:'Tabela de preços', p:[A,F], fn:() => vPrecos()},
+  empresas:{t:'Empresas', p:[A,F], fn:() => vCrud('empresas')}, navios:{t:'Navios', fn:() => vCrud('navios')}, armazens:{t:'Armazéns', p:[A], fn:() => vCrud('armazens')},
+  funcoes:{t:'Funções', p:[A], fn:() => vCrud('funcoes')}, turnos:{t:'Turnos', p:[A], fn:() => vCrud('turnos')}, feriados:{t:'Feriados', p:[A,F], fn:() => vCrud('feriados')},
+  usuarios:{t:'Usuários', p:[A], fn:() => vUsuarios()}, auditoria:{t:'Auditoria', p:[A,F], fn:() => vAuditoria()}
+};
+async function rotear(){
+  if (!ME) return;
+  alternarMenu(false);
+  let h = location.hash.slice(1);
+  let m = /^req-(\d+)$/.exec(h);
+  let mf = veValores() ? /^fec-(\d+)$/.exec(h) : null;
+  if (!m && !mf && (!ROTAS[h] || !permite(ROTAS[h].p))) h = veValores() ? 'painel' : 'requisicoes';
+  $$('#nav a').forEach(a => a.classList.toggle('ativo', a.dataset.r === (m ? 'requisicoes' : mf ? 'fechamentos' : h)));
+  $('#topo-t').textContent = m ? reqNum(m[1]) : mf ? fecNum(mf[1]) : ROTAS[h].t;
+  const main = $('#main');
+  main.innerHTML = '<div class="conteudo"><div class="carregando">Carregando…</div></div>';
+  window.scrollTo(0, 0);
+  try { m ? await vDetalhe(+m[1]) : mf ? await vFechamento(+mf[1]) : await ROTAS[h].fn(); }
+  catch (e) { main.innerHTML = `<div class="conteudo"><div class="erro">${esc(e.message)}</div></div>`; }
+}
+function pagina(titulo, sub, acoes, corpo){
+  const demo = DB.modo === 'demo' ? '<div class="faixa-demo"><b>Modo demonstração.</b> Os dados ficam só neste navegador. Para uso real, configure o Supabase (veja o README).</div>' : '';
+  $('#main').innerHTML = `<div class="conteudo">${demo}<div class="cab"><div><h1>${titulo}</h1>${sub ? `<p>${sub}</p>` : ''}</div><div class="acoes">${acoes || ''}</div></div>${corpo}</div>`;
+}
+
+/* ----------------------------- Modal genérico ----------------------------- */
+function modal(titulo, corpo, {okTxt = 'Salvar', onOk, extra, perigo} = {}){
+  const f = document.createElement('div'); f.className = 'modal-fundo';
+  f.innerHTML = `<form class="modal" novalidate role="dialog" aria-modal="true" aria-label="${esc(titulo)}">
+    <h2>${esc(titulo)}</h2><div class="corpo" style="display:grid;gap:14px">${corpo}</div><div class="erro" hidden></div>
+    <div class="rodape">${extra || ''}<div class="dir"><button type="button" class="btn" data-x>Fechar</button>${onOk ? `<button type="submit" class="btn ${perigo ? 'perigo' : 'primario'}">${esc(okTxt)}</button>` : ''}</div></div></form>`;
+  document.body.appendChild(f);
+  const fechar = () => { f.remove(); document.removeEventListener('keydown', esc_); };
+  const esc_ = e => { if (e.key === 'Escape') fechar(); };
+  document.addEventListener('keydown', esc_);
+  f.addEventListener('mousedown', e => { if (e.target === f) fechar(); });
+  $('[data-x]', f).onclick = fechar;
+  const form = $('form', f), err = $('.erro', f);
+  form.addEventListener('submit', async e => {
+    e.preventDefault(); if (!onOk) return;
+    err.hidden = true; const b = $('button[type=submit]', f); b.disabled = true;
+    try { const r = await onOk(form); if (r !== false) fechar(); }
+    catch (x) { err.textContent = x.message; err.hidden = false; }
+    finally { b.disabled = false; }
+  });
+  const pri = $('input,select,textarea', form); if (pri) setTimeout(() => pri.focus(), 30);
+  return {el:form, fechar, erro:m => { err.textContent = m; err.hidden = false; }};
+}
+function confirmar(titulo, texto, ok, fn, perigo){ modal(titulo, `<p style="margin:0">${esc(texto)}</p>`, {okTxt:ok, onOk:fn, perigo}); }
+function campo(f, v){
+  const id = 'c-' + f.k, req = f.req ? ' required' : '';
+  if (f.type === 'bool') return `<label class="check"><input type="checkbox" id="${id}" ${v ?? f.def ? 'checked' : ''}> ${esc(f.l)}</label>`;
+  const lab = `<label for="${id}">${esc(f.l)}${f.req ? ' *' : ''}</label>`;
+  if (f.type === 'select') return `<div class="campo">${lab}<select id="${id}"${req}>${f.vazio ? `<option value="">${esc(f.vazio)}</option>` : ''}${f.opts().map(([k, t]) => `<option value="${esc(k)}" ${String(k) === String(v ?? '') ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select></div>`;
+  if (f.type === 'area') return `<div class="campo">${lab}<textarea id="${id}">${esc(v)}</textarea></div>`;
+  return `<div class="campo">${lab}<input id="${id}" type="${f.type || 'text'}" value="${esc(v ?? '')}"${req}${f.step ? ` step="${f.step}"` : ''}${f.min != null ? ` min="${f.min}"` : ''}${f.max != null ? ` max="${f.max}"` : ''}${f.ph ? ` placeholder="${esc(f.ph)}"` : ''}></div>`;
+}
+function lerCampos(form, campos){
+  const o = {};
+  for (const f of campos) {
+    const el = $('#c-' + f.k, form); if (!el) continue;
+    let v = f.type === 'bool' ? el.checked : el.value.trim();
+    if (f.req && v === '') throw new Error(`Preencha o campo "${f.l}".`);
+    if (f.type === 'number' || f.num) v = v === '' ? null : Number(v);
+    else if (f.type === 'select' && f.numerico) v = v === '' ? null : Number(v);
+    else if (f.type !== 'bool' && v === '') v = null;
+    if (f.upper && typeof v === 'string') v = v.toUpperCase();
+    o[f.k] = v;
+  }
+  return o;
+}
+
+/* ------------------------------- Painel ------------------------------- */
+const estado = {};
+async function vPainel(){
+  const f = estado.painel || (estado.painel = {de:inicioMes(), ate:hoje(), soAprov:false});
+  pagina('Painel', 'Custo de mão de obra por navio, fornecedor e função', `<button class="btn" id="p-exp" type="button">Baixar CSV do período</button>`, `
+    <div class="filtros painel">
+      <div class="campo"><label for="p-de">De</label><input type="date" id="p-de" value="${f.de}"></div>
+      <div class="campo"><label for="p-ate">Até</label><input type="date" id="p-ate" value="${f.ate}"></div>
+      <label class="check" style="padding-bottom:9px"><input type="checkbox" id="p-ap" ${f.soAprov ? 'checked' : ''}> Somente aprovadas</label>
+    </div><div id="p-corpo" style="display:grid;gap:20px;grid-template-columns:minmax(0,1fr)"><div class="carregando">Calculando…</div></div>`);
+  const ler = () => { f.de = $('#p-de').value || inicioMes(); f.ate = $('#p-ate').value || hoje(); f.soAprov = $('#p-ap').checked; desenhar(); };
+  ['#p-de','#p-ate','#p-ap'].forEach(s => $(s).onchange = ler);
+  let itensAtuais = [];
+  $('#p-exp').onclick = () => exportarCSV(itensAtuais, `mao-de-obra_${f.de}_a_${f.ate}.csv`);
+  async function desenhar(){
+    const [itens, reqs] = await Promise.all([DB.list('vw_itens', {gte:{data:f.de}, lte:{data:f.ate}}), DB.list('vw_requisicoes', {gte:{data:f.de}, lte:{data:f.ate}})]);
+    const ok = s => s !== 'CANCELADA' && (!f.soAprov || s === 'APROVADA');
+    const I = itens.filter(i => ok(i.status)); itensAtuais = I;
+    const total = I.reduce((s, i) => s + Number(i.valor || 0), 0), hh = I.reduce((s, i) => s + i.horas, 0);
+    const domfer = I.filter(i => i.tipo_dia === 'DOM_FER').reduce((s, i) => s + Number(i.valor || 0), 0);
+    const pend = reqs.filter(r => r.status === 'ABERTA');
+    const pendV = I.filter(i => i.status === 'ABERTA').reduce((s, i) => s + Number(i.valor || 0), 0);
+    const navios = new Set(I.map(i => i.navio_id));
+    const semFech = I.filter(i => i.status === 'APROVADA' && !i.fechamento_id), aFechar = semFech.reduce((s, i) => s + Number(i.valor || 0), 0), aFecharN = semFech.length;
+    const agrupar = (chave, nome) => { const m = new Map(); for (const i of I) { const k = i[chave]; const g = m.get(k) || {nome:i[nome], v:0, hh:0, n:0, reqs:new Set(), util:0, dom:0}; g.v += Number(i.valor || 0); g.hh += i.horas; g.n++; g.reqs.add(i.requisicao_id); g[i.tipo_dia === 'DOM_FER' ? 'dom' : 'util'] += Number(i.valor || 0); m.set(k, g); } return [...m.values()].sort((a, b) => b.v - a.v); };
+    const barras = l => { const mx = Math.max(...l.map(x => x.v), 1); return l.length ? `<div class="barras">${l.map(x => `<div class="barra"><span class="nome">${esc(x.nome)}</span><span class="val">${brl(x.v)}</span><span class="trilho"><i style="width:${(x.v / mx * 100).toFixed(1)}%"></i></span><span class="sub">${n0(x.n)} diárias · ${n0(x.hh)} HH${total ? ' · ' + (x.v / total * 100).toFixed(1).replace('.', ',') + '%' : ''}</span></div>`).join('')}</div>` : '<div class="vazio">Sem lançamentos no período.</div>'; };
+    const porEmp = agrupar('empresa_id', 'empresa'), porNav = agrupar('navio_id', 'navio');
+    $('#p-corpo').innerHTML = `
+      <div class="kpis">
+        <div class="kpi"><span class="rot">Custo no período</span><b>${brl(total)}</b><small>${f.soAprov ? 'somente aprovadas' : 'abertas + aprovadas'}</small></div>
+        <div class="kpi"><span class="rot">Diárias</span><b>${n0(I.length)}</b><small>${n0(hh)} horas-homem</small></div>
+        <div class="kpi"><span class="rot">Custo médio por HH</span><b>${brl(hh ? total / hh : 0)}</b><small>${n0(navios.size)} navios atendidos</small></div>
+        <div class="kpi ${domfer ? 'alerta' : ''}"><span class="rot">Domingo e feriado</span><b>${brl(domfer)}</b><small>${total ? (domfer / total * 100).toFixed(1).replace('.', ',') : '0'}% do custo</small></div>
+        <div class="kpi ${pend.length ? 'alerta' : ''}"><span class="rot">Aguardando aprovação</span><b>${n0(pend.length)}</b><small>${brl(pendV)} em requisições abertas</small></div>
+        <div class="kpi ${aFechar ? 'alerta' : ''}"><span class="rot">Aprovado sem fechamento</span><b>${brl(aFechar)}</b><small>${aFecharN ? `${n0(aFecharN)} diárias · <a href="#fechamentos">ver fechamentos</a>` : 'tudo fechado no período'}</small></div>
+      </div>
+      <section class="painel"><div class="cab-p"><h2>Fechamento por fornecedor</h2><span class="muted" style="font-size:.85rem">Base para conferir a nota fiscal de cada empresa</span></div>
+        <div class="tab-wrap"><table class="tab"><thead><tr><th>Empresa</th><th class="num">Diárias</th><th class="num">HH</th><th class="num">Dia útil</th><th class="num">Dom/feriado</th><th class="num">Total</th></tr></thead>
+        <tbody>${porEmp.map(g => `<tr><td>${esc(g.nome)}</td><td class="num">${n0(g.n)}</td><td class="num">${n0(g.hh)}</td><td class="num">${brl(g.util)}</td><td class="num">${brl(g.dom)}</td><td class="num"><b>${brl(g.v)}</b></td></tr>`).join('') || '<tr><td colspan="6" class="vazio">Sem lançamentos no período.</td></tr>'}</tbody>
+        ${porEmp.length ? `<tfoot><tr><td>Total</td><td class="num">${n0(I.length)}</td><td class="num">${n0(hh)}</td><td class="num">${brl(total - domfer)}</td><td class="num">${brl(domfer)}</td><td class="num">${brl(total)}</td></tr></tfoot>` : ''}</table></div></section>
+      <section class="painel"><div class="cab-p"><h2>Custo por navio</h2><span class="muted" style="font-size:.85rem">Para o resultado por escala</span></div>
+        <div class="tab-wrap"><table class="tab"><thead><tr><th>Navio</th><th class="num">Requisições</th><th class="num">Diárias</th><th class="num">HH</th><th class="num">Custo/HH</th><th class="num">Total</th></tr></thead>
+        <tbody>${porNav.map(g => `<tr><td>${esc(g.nome)}</td><td class="num">${n0(g.reqs.size)}</td><td class="num">${n0(g.n)}</td><td class="num">${n0(g.hh)}</td><td class="num">${brl(g.hh ? g.v / g.hh : 0)}</td><td class="num"><b>${brl(g.v)}</b></td></tr>`).join('') || '<tr><td colspan="6" class="vazio">Sem lançamentos no período.</td></tr>'}</tbody></table></div></section>
+      <div class="duas">
+        <section class="painel"><h2>Por função</h2>${barras(agrupar('funcao_id', 'funcao'))}</section>
+        <section class="painel"><h2>Por armazém</h2>${barras(agrupar('armazem_id', 'armazem'))}</section>
+        <section class="painel"><h2>Por turno</h2>${barras(agrupar('turno_id', 'turno'))}</section>
+        <section class="painel"><h2>Por supervisor</h2>${barras(agrupar('supervisor_id', 'supervisor'))}</section>
+      </div>`;
+  }
+  await desenhar();
+}
+
+/* ----------------------------- Requisições ----------------------------- */
+async function vRequisicoes(){
+  const f = estado.req || (estado.req = {de:addDias(hoje(), -30), ate:addDias(hoje(), 7), status:'', navio:'', minhas:ME.perfil === 'SUPERVISOR'});
+  pagina('Requisições', 'Mão de obra solicitada por navio, armazém e turno',
+    `<button class="btn" id="r-exp" type="button">Baixar CSV</button>${podeRequisitar() ? '<a class="btn primario" href="#nova">Nova requisição</a>' : ''}`, `
+    <div class="filtros">
+      <div class="campo"><label for="r-de">De</label><input type="date" id="r-de" value="${f.de}"></div>
+      <div class="campo"><label for="r-ate">Até</label><input type="date" id="r-ate" value="${f.ate}"></div>
+      <div class="campo"><label for="r-st">Situação</label><select id="r-st"><option value="">Todas</option>${Object.entries(STATUS).map(([k, t]) => `<option value="${k}" ${f.status === k ? 'selected' : ''}>${t}</option>`).join('')}</select></div>
+      <div class="campo"><label for="r-nav">Navio</label><select id="r-nav"><option value="">Todos</option>${C.navios.map(n => `<option value="${n.id}" ${String(f.navio) === String(n.id) ? 'selected' : ''}>${esc(n.nome)}${n.viagem ? ' · ' + esc(n.viagem) : ''}</option>`).join('')}</select></div>
+      <label class="check" style="padding-bottom:9px"><input type="checkbox" id="r-min" ${f.minhas ? 'checked' : ''}> Só as minhas</label>
+    </div><div id="r-lista"><div class="carregando">Carregando…</div></div>`);
+  const ler = () => { f.de = $('#r-de').value; f.ate = $('#r-ate').value; f.status = $('#r-st').value; f.navio = $('#r-nav').value; f.minhas = $('#r-min').checked; carregar(); };
+  ['#r-de','#r-ate','#r-st','#r-nav','#r-min'].forEach(s => $(s).onchange = ler);
+  let atual = [];
+  $('#r-exp').onclick = async () => {
+    const ids = new Set(atual.map(r => r.id));
+    const itens = (await DB.list('vw_itens', {gte:{data:f.de}, lte:{data:f.ate}})).filter(i => ids.has(i.requisicao_id));
+    exportarCSV(itens, `requisicoes_${f.de}_a_${f.ate}.csv`);
+  };
+  async function carregar(){
+    const o = {order:['data desc','id desc']}; if (f.de) o.gte = {data:f.de}; if (f.ate) o.lte = {data:f.ate};
+    let rows = await DB.list('vw_requisicoes', o);
+    if (f.status) rows = rows.filter(r => r.status === f.status);
+    if (f.navio) rows = rows.filter(r => String(r.navio_id) === String(f.navio));
+    if (f.minhas) rows = rows.filter(r => r.supervisor_id === ME.id);
+    atual = rows;
+    const adm = veValores(), tot = rows.filter(r => r.status !== 'CANCELADA');
+    $('#r-lista').innerHTML = rows.length ? `<div class="tab-wrap"><table class="tab"><thead><tr><th>Nº</th><th>Data</th><th>Turno</th><th>Navio</th><th>Armazém</th><th class="num">Trab.</th>${adm ? '<th class="num">Total</th>' : ''}<th>Supervisor</th><th>Situação</th></tr></thead><tbody>
+      ${rows.map(r => `<tr class="click" data-id="${r.id}"><td><a class="reqnum" href="#req-${r.id}">${reqNum(r.id)}</a></td>
+        <td style="white-space:nowrap">${fdata(r.data)} <span class="muted" style="font-size:.8rem">${DIAS[dow(r.data)].slice(0, 3)}</span>${r.tipo_dia === 'DOM_FER' ? ' <span class="tag DOM_FER">Dom/fer</span>' : ''}</td>
+        <td><span class="turno">${esc(r.turno)}</span></td><td>${esc(r.navio)}${r.viagem ? ` <span class="muted">· ${esc(r.viagem)}</span>` : ''}</td><td>${esc(r.armazem)}</td>
+        <td class="num">${r.qtd_trabalhadores}</td>${adm ? `<td class="num">${brl(r.valor_total)}</td>` : ''}<td>${esc(r.supervisor)}</td><td><span class="pill ${r.status}">${STATUS[r.status]}</span>${r.em_fechamento ? ' <span class="pill CONFERIDO" title="Incluída em fechamento do financeiro">Fechada</span>' : ''}</td></tr>`).join('')}
+      </tbody><tfoot><tr><td colspan="5">${n0(rows.length)} requisições (canceladas fora dos totais)</td><td class="num">${n0(tot.reduce((s, r) => s + r.qtd_trabalhadores, 0))}</td>${adm ? `<td class="num">${brl(tot.reduce((s, r) => s + Number(r.valor_total || 0), 0))}</td>` : ''}<td colspan="2"></td></tr></tfoot></table></div>`
+      : `<div class="painel vazio">Nenhuma requisição nesse filtro.${podeRequisitar() ? ' <a href="#nova">Criar uma requisição</a>.' : ''}</div>`;
+    $$('#r-lista tr.click').forEach(tr => tr.onclick = e => { if (e.target.tagName !== 'A') location.hash = 'req-' + tr.dataset.id; });
+  }
+  await carregar();
+}
+
+/* --------------------------- Nova requisição --------------------------- */
+function formCabecalho(r = {}){
+  const turnos = C.turnos.filter(t => t.ativo || t.id === r.turno_id);
+  return `
+    <div class="grade">
+      <div class="campo"><label for="n-data">Data do dia operacional *</label><input type="date" id="n-data" value="${r.data || hoje()}" required><span id="n-tipo" class="muted" style="font-size:.82rem"></span></div>
+      <div class="campo"><label for="n-arm">Armazém / local *</label><select id="n-arm" required><option value="">Selecione</option>${C.armazens.filter(a => a.ativo || a.id === r.armazem_id).map(a => `<option value="${a.id}" ${a.id === r.armazem_id ? 'selected' : ''}>${esc(a.nome)}</option>`).join('')}</select></div>
+    </div>
+    <div class="campo"><label for="n-nav">Navio *</label>
+      <div style="display:flex;gap:8px"><select id="n-nav" required style="flex:1;min-width:0"><option value="">Selecione o navio</option>${C.navios.filter(n => n.ativo || n.id === r.navio_id).map(n => `<option value="${n.id}" ${n.id === r.navio_id ? 'selected' : ''}>${esc(n.nome)}${n.viagem ? ' · viagem ' + esc(n.viagem) : ''}</option>`).join('')}</select>
+      <button type="button" class="btn" id="n-novonav">Novo navio</button></div></div>
+    <div class="campo"><span style="font-size:.8rem;font-weight:600;color:var(--muted)">Turno *</span>
+      <div class="radio-chips" role="radiogroup" aria-label="Turno">${turnos.map(t => `<label><input type="radio" name="n-turno" value="${t.id}" ${t.id === r.turno_id ? 'checked' : ''}><span>${esc(t.codigo)}<small>${t.horas}h ${t.periodo === 'NOTURNO' ? 'noturno' : 'diurno'}</small></span></label>`).join('')}</div></div>
+    <div class="campo"><label for="n-obs">Observação</label><textarea id="n-obs" placeholder="Ex.: descarga de bobinas, porão 2">${esc(r.observacao || '')}</textarea></div>`;
+}
+function ligarCabecalho(raiz){
+  const atualizarTipo = () => { const d = $('#n-data', raiz).value; const t = tipoDiaLocal(d); const fer = C.feriados.find(x => x.data === d);
+    $('#n-tipo', raiz).innerHTML = d ? `${DIAS[dow(d)]} · <span class="tag ${t}">${TIPO_DIA[t]}${fer ? ' · ' + esc(fer.descricao) : ''}</span>` : ''; };
+  $('#n-data', raiz).onchange = atualizarTipo; atualizarTipo();
+  $('#n-novonav', raiz).onclick = () => formNavio(async novo => {
+    const sel = $('#n-nav', raiz); const o = document.createElement('option'); o.value = novo.id; o.textContent = novo.nome + (novo.viagem ? ' · viagem ' + novo.viagem : ''); sel.appendChild(o); sel.value = novo.id;
+  });
+}
+function lerCabecalho(raiz){
+  const d = $('#n-data', raiz).value, ar = $('#n-arm', raiz).value, nv = $('#n-nav', raiz).value, tu = $('input[name=n-turno]:checked', raiz);
+  if (!d) throw new Error('Informe a data.'); if (!nv) throw new Error('Selecione o navio.'); if (!ar) throw new Error('Selecione o armazém.'); if (!tu) throw new Error('Selecione o turno.');
+  return {data:d, navio_id:+nv, armazem_id:+ar, turno_id:+tu.value, observacao:$('#n-obs', raiz).value.trim() || null};
+}
+function formNavio(depois){
+  const campos = CRUD.navios.campos;
+  modal('Novo navio', campos.filter(f => f.k !== 'ativo').map(f => campo(f)).join(''), {okTxt:'Cadastrar navio', onOk: async form => {
+    const d = lerCampos(form, campos.filter(f => f.k !== 'ativo')); d.ativo = true;
+    const novo = await DB.insert('navios', d); C.navios = ordNome(await DB.list('navios')); toast('Navio cadastrado.');
+    if (depois) await depois(novo || C.navios.find(n => n.nome === d.nome && (n.viagem || null) === (d.viagem || null)));
+  }});
+}
+async function vNova(){
+  pagina('Nova requisição', 'Informe navio, local e turno. Depois adicione os trabalhadores.', '', `
+    <form class="painel" id="f-nova" novalidate style="display:grid;gap:16px;max-width:760px">${formCabecalho()}
+      <div class="erro" id="n-erro" hidden></div>
+      <div class="acoes"><button class="btn primario" type="submit">Criar e adicionar trabalhadores</button><a class="btn" href="#requisicoes">Voltar</a></div></form>`);
+  const raiz = $('#f-nova'); ligarCabecalho(raiz);
+  raiz.addEventListener('submit', async e => {
+    e.preventDefault(); const er = $('#n-erro'); er.hidden = true;
+    try { const r = await DB.insert('requisicoes', {...lerCabecalho(raiz), supervisor_id:ME.id}); toast(reqNum(r.id) + ' criada.'); location.hash = 'req-' + r.id; }
+    catch (x) { er.textContent = x.message; er.hidden = false; }
+  });
+}
+
+/* ------------------------ Detalhe da requisição ------------------------ */
+async function vDetalhe(id){
+  const [rs, itens] = await Promise.all([DB.list('vw_requisicoes', {eq:{id}}), DB.list('vw_itens', {eq:{requisicao_id:id}, order:'trabalhador'})]);
+  const r = rs[0]; if (!r) throw new Error('Requisição não encontrada.');
+  const adm = isAdmin(), dono = r.supervisor_id === ME.id, fechada = r.em_fechamento;
+  const editavel = r.status === 'ABERTA' && !fechada && (adm || dono);
+  const fechIds = [...new Set(itens.map(i => i.fechamento_id).filter(Boolean))];
+  const total = itens.reduce((s, i) => s + Number(i.valor || 0), 0), hh = itens.reduce((s, i) => s + i.horas, 0);
+  const fer = C.feriados.find(x => x.data === r.data);
+  const acoes = [
+    adm && r.status === 'ABERTA' ? '<button class="btn primario" id="d-aprovar" type="button">Aprovar</button>' : '',
+    editavel ? '<button class="btn" id="d-editar" type="button">Editar dados</button>' : '',
+    podeRequisitar() ? '<button class="btn" id="d-dup" type="button">Duplicar</button>' : '',
+    adm && r.status === 'ABERTA' && itens.length ? '<button class="btn" id="d-repr" type="button">Reprocessar preços</button>' : '',
+    adm && r.status !== 'ABERTA' && !fechada ? '<button class="btn" id="d-reabrir" type="button">Reabrir</button>' : '',
+    editavel ? '<button class="btn perigo" id="d-cancel" type="button">Cancelar</button>' : ''].join('');
+  const porFuncao = C.funcoes.map(fu => [fu, itens.filter(i => i.funcao_id === fu.id)]).filter(([, l]) => l.length);
+  pagina(`<span class="reqnum">${reqNum(r.id)}</span>`, `${esc(r.navio)}${r.viagem ? ' · viagem ' + esc(r.viagem) : ''} · ${esc(r.armazem)}`, acoes, `
+    <section class="painel"><dl class="ficha" style="margin:0">
+      <div><dt>Situação</dt><dd><span class="pill ${r.status}">${STATUS[r.status]}</span></dd></div>
+      <div><dt>Data</dt><dd>${fdata(r.data)} · ${DIAS[dow(r.data)]}</dd></div>
+      <div><dt>Turno</dt><dd><span class="turno">${esc(r.turno)}</span> ${r.horas_turno}h ${r.periodo === 'NOTURNO' ? 'noturno' : 'diurno'}</dd></div>
+      <div><dt>Tipo de dia</dt><dd><span class="tag ${r.tipo_dia}">${TIPO_DIA[r.tipo_dia]}</span>${fer ? ` <span class="muted" style="font-size:.85rem">${esc(fer.descricao)}</span>` : ''}</dd></div>
+      <div><dt>Supervisor</dt><dd>${esc(r.supervisor)}</dd></div>
+      <div><dt>Criada em</dt><dd>${fdh(r.criado_em)}</dd></div>
+      ${r.aprovado_em ? `<div><dt>Aprovada</dt><dd>${esc(r.aprovado_por_nome || '')} · ${fdh(r.aprovado_em)}</dd></div>` : ''}
+      ${r.observacao ? `<div style="grid-column:1/-1"><dt>Observação</dt><dd>${esc(r.observacao)}</dd></div>` : ''}
+      ${r.motivo_cancelamento && r.status === 'CANCELADA' ? `<div style="grid-column:1/-1"><dt>Motivo do cancelamento</dt><dd>${esc(r.motivo_cancelamento)}</dd></div>` : ''}
+      ${fechada ? `<div style="grid-column:1/-1"><dt>Financeiro</dt><dd>Incluída em fechamento${veValores() && fechIds.length ? ': ' + fechIds.map(f => `<a href="#fec-${f}" class="reqnum">${fecNum(f)}</a>`).join(', ') : ''}. Para alterar, o financeiro precisa desfazer o fechamento.</dd></div>` : ''}
+    </dl></section>
+    <section class="painel">
+      <div class="cab-p"><h2>Trabalhadores</h2><div class="totais"><span><b>${itens.length}</b> pessoas</span><span><b>${hh}</b> HH</span>${veValores() ? `<span>Total <b>${brl(total)}</b></span>` : ''}</div></div>
+      ${porFuncao.length ? porFuncao.map(([fu, l]) => `<div class="grupo-func"><h3>${esc(fu.nome)} · ${l.length}</h3><div class="lista-trab">${l.map(i => `
+        <div class="trab"><div><div class="n">${esc(i.trabalhador)}</div><div class="d">${esc(i.empresa)} · ${i.horas}h</div></div>
+        <div class="lado">${veValores() ? `<span class="mono">${brl(i.valor)}</span>` : ''}${editavel ? `<button class="btn peq perigo" type="button" data-rem="${i.id}" aria-label="Remover ${esc(i.trabalhador)}">Remover</button>` : ''}</div></div>`).join('')}</div></div>`).join('')
+        : '<div class="vazio">Nenhum trabalhador nesta requisição ainda.</div>'}
+    </section>
+    ${editavel ? '<section class="painel" id="d-add"></section>' : ''}`);
+
+  $$('[data-rem]').forEach(b => b.onclick = async () => { try { await DB.remove('requisicao_itens', {id:+b.dataset.rem}); toast('Trabalhador removido.'); vDetalhe(id); } catch (e) { toast(e.message, 1); } });
+  if ($('#d-aprovar')) $('#d-aprovar').onclick = () => confirmar('Aprovar requisição', `${reqNum(id)} com ${itens.length} trabalhadores, total ${brl(total)}. Após aprovar, o supervisor não consegue mais alterar.`, 'Aprovar', async () => { await DB.update('requisicoes', {id}, {status:'APROVADA'}); toast('Requisição aprovada.'); vDetalhe(id); });
+  if ($('#d-reabrir')) $('#d-reabrir').onclick = () => confirmar('Reabrir requisição', 'A requisição volta para "Aberta" e poderá ser alterada pelo supervisor.', 'Reabrir', async () => { await DB.update('requisicoes', {id}, {status:'ABERTA', motivo_cancelamento:null}); toast('Requisição reaberta.'); vDetalhe(id); });
+  if ($('#d-cancel')) $('#d-cancel').onclick = () => modal('Cancelar requisição', `<div class="campo"><label for="c-motivo">Motivo do cancelamento *</label><textarea id="c-motivo" placeholder="Ex.: navio atrasou a atracação"></textarea></div>`,
+    {okTxt:'Cancelar requisição', perigo:1, onOk: async fm => { const m = $('#c-motivo', fm).value.trim(); if (!m) throw new Error('Informe o motivo.'); await DB.update('requisicoes', {id}, {status:'CANCELADA', motivo_cancelamento:m}); toast('Requisição cancelada.'); vDetalhe(id); }});
+  if ($('#d-repr')) $('#d-repr').onclick = async () => { let f = 0; for (const i of itens) { try { await DB.update('requisicao_itens', {id:i.id}, {funcao_id:i.funcao_id}); } catch (e) { f++; toast(i.trabalhador + ': ' + e.message, 1); } } toast(f ? `${f} itens não puderam ser reprocessados.` : 'Preços atualizados pela tabela vigente.'); vDetalhe(id); };
+  if ($('#d-editar')) $('#d-editar').onclick = () => {
+    const m = modal('Editar dados da requisição', formCabecalho({data:r.data, turno_id:r.turno_id, navio_id:r.navio_id, armazem_id:r.armazem_id, observacao:r.observacao}),
+      {onOk: async fm => { await DB.update('requisicoes', {id}, lerCabecalho(fm)); toast('Requisição atualizada. Preços recalculados.'); vDetalhe(id); }});
+    ligarCabecalho(m.el);
+  };
+  if ($('#d-dup')) $('#d-dup').onclick = () => {
+    const m = modal('Duplicar requisição', `<p class="muted" style="margin:0">Cria uma nova requisição com o mesmo navio, armazém e equipe (${itens.length} pessoas) para outra data ou turno.</p>${formCabecalho({data:r.data, navio_id:r.navio_id, armazem_id:r.armazem_id})}`,
+      {okTxt:'Duplicar', onOk: async fm => {
+        const nova = await DB.insert('requisicoes', {...lerCabecalho(fm), supervisor_id:ME.id});
+        const falhas = [];
+        for (const i of itens) { try { await DB.insert('requisicao_itens', {requisicao_id:nova.id, trabalhador_id:i.trabalhador_id, funcao_id:i.funcao_id}); } catch (e) { falhas.push(e.message); } }
+        location.hash = 'req-' + nova.id;
+        if (falhas.length) modal(`${falhas.length} trabalhadores não foram copiados`, `<ul style="margin:0;padding-left:18px">${falhas.map(f => `<li>${esc(f)}</li>`).join('')}</ul>`);
+        else toast(`${reqNum(nova.id)} criada com ${itens.length} trabalhadores.`);
+      }});
+    ligarCabecalho(m.el);
+  };
+  if (editavel) await painelAdicionar(r, itens);
+}
+
+async function painelAdicionar(r, itens){
+  const doDia = (await DB.list('vw_itens', {eq:{data:r.data}})).filter(i => i.status !== 'CANCELADA' && i.requisicao_id !== r.id);
+  const turnoR = byId('turnos', r.turno_id), nesta = new Set(itens.map(i => i.trabalhador_id));
+  const st = estado.add || (estado.add = {funcao:null, busca:''});
+  const funcoes = C.funcoes.filter(f => f.ativo);
+  if (!funcoes.some(f => f.id === st.funcao)) st.funcao = funcoes[0] && funcoes[0].id;
+  const box = $('#d-add');
+  const desenhar = () => {
+    const termo = st.busca.toLowerCase();
+    const lista = C.trabalhadores.filter(t => t.ativo && funcoesDe(t.id).includes(st.funcao) && !nesta.has(t.id) && (!termo || t.nome.toLowerCase().includes(termo) || byId('empresas', t.empresa_id).nome.toLowerCase().includes(termo)));
+    $('#a-lista', box).innerHTML = lista.length ? lista.map(t => {
+      const conf = doDia.find(i => i.trabalhador_id === t.id && sobrepoe(turnoR, byId('turnos', i.turno_id)));
+      const p = veValores() ? precoVigente(t.empresa_id, st.funcao, r.turno_id, r.tipo_dia, r.data) : null;
+      const semPreco = veValores() && !p;
+      return `<div class="trab ${conf || semPreco ? 'bloq' : ''}"><div><div class="n">${esc(t.nome)}</div><div class="d">${esc(byId('empresas', t.empresa_id).nome)}${t.cnpj_mei ? ' · MEI ' + esc(t.cnpj_mei) : ''}</div>
+        ${conf ? `<div class="aviso">Já escalado no turno ${esc(conf.turno)} · ${reqNum(conf.requisicao_id)}</div>` : ''}${semPreco ? '<div class="aviso">Empresa sem preço para esta função/turno</div>' : ''}</div>
+        <div class="lado">${p ? `<span class="mono">${brl(p.valor)}</span>` : ''}<button class="btn peq ${conf || semPreco ? '' : 'primario'}" type="button" data-add="${t.id}" ${conf || semPreco ? 'disabled' : ''}>Adicionar</button></div></div>`;
+    }).join('') : `<div class="vazio">Nenhum trabalhador disponível nesta função.${isAdmin() ? ' <a href="#trabalhadores">Cadastrar trabalhador</a>.' : ''}</div>`;
+    $$('[data-add]', box).forEach(b => b.onclick = async () => {
+      b.disabled = true;
+      try { await DB.insert('requisicao_itens', {requisicao_id:r.id, trabalhador_id:+b.dataset.add, funcao_id:st.funcao}); toast('Trabalhador adicionado.'); vDetalhe(r.id); }
+      catch (e) { toast(e.message, 1); b.disabled = false; }
+    });
+  };
+  box.innerHTML = `<div class="cab-p"><h2>Adicionar trabalhadores</h2><span class="muted" style="font-size:.85rem">Turno <span class="turno">${esc(r.turno)}</span> · ${fdata(r.data)}</span></div>
+    <div style="display:grid;gap:12px">
+      <div class="chips" role="group" aria-label="Função">${funcoes.map(f => `<button type="button" class="chip" data-f="${f.id}" aria-pressed="${f.id === st.funcao}">${esc(f.nome)}</button>`).join('')}</div>
+      <div class="campo"><label for="a-busca">Buscar por nome ou empresa</label><input id="a-busca" type="search" value="${esc(st.busca)}" placeholder="Digite para filtrar"></div>
+      <div class="lista-trab" id="a-lista"></div></div>`;
+  $$('[data-f]', box).forEach(b => b.onclick = () => { st.funcao = +b.dataset.f; $$('[data-f]', box).forEach(x => x.setAttribute('aria-pressed', x === b)); desenhar(); });
+  $('#a-busca', box).oninput = e => { st.busca = e.target.value; desenhar(); };
+  desenhar();
+}
+
+/* ------------------------------ Exportação ------------------------------ */
+function exportarCSV(itens, nome){
+  if (!itens.length) { toast('Nada para exportar nesse filtro.', 1); return; }
+  const adm = veValores();
+  const cab = ['Requisição','Data','Dia da semana','Tipo de dia','Turno','Horas','Navio','Viagem','Armazém','Trabalhador','CNPJ MEI','Função','Empresa','Supervisor','Situação'].concat(adm ? ['Valor','Fechamento'] : []);
+  const q = v => { const s = String(v ?? ''); return /[;"\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
+  const linhas = [...itens].sort((a, b) => a.data.localeCompare(b.data) || a.requisicao_id - b.requisicao_id).map(i => [reqNum(i.requisicao_id), fdata(i.data), DIAS[dow(i.data)], TIPO_DIA[i.tipo_dia], i.turno, i.horas, i.navio, i.viagem, i.armazem, i.trabalhador, i.cnpj_mei, i.funcao, i.empresa, i.supervisor, STATUS[i.status]]
+    .concat(adm ? [Number(i.valor || 0).toFixed(2).replace('.', ','), i.fechamento_id ? fecNum(i.fechamento_id) : ''] : []).map(q).join(';'));
+  const blob = new Blob(['﻿' + [cab.join(';')].concat(linhas).join('\r\n')], {type:'text/csv;charset=utf-8'});
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = nome; document.body.appendChild(a); a.click();
+  setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+  toast(`${itens.length} linhas exportadas.`);
+}
+
+/* ------------------------- Cadastros genéricos ------------------------- */
+const CRUD = {
+  empresas:{titulo:'Empresas fornecedoras', sub:'Quem fornece a mão de obra e o que está incluso no preço', tabela:'empresas',
+    campos:[{k:'nome',l:'Nome',req:1,upper:1},{k:'cnpj',l:'CNPJ'},{k:'contato',l:'Contato'},{k:'telefone',l:'Telefone'},{k:'email',l:'E-mail',type:'email'},{k:'fornece_epi',l:'Fornece EPI',type:'bool'},{k:'fornece_lanche',l:'Fornece lanche',type:'bool'},{k:'observacao',l:'Observação',type:'area'},{k:'ativo',l:'Ativa',type:'bool',def:true}],
+    cols:[['nome','Empresa'],['cnpj','CNPJ'],['contato','Contato'],['telefone','Telefone'],['fornece_epi','EPI','sn'],['fornece_lanche','Lanche','sn'],['ativo','Situação','ativo']]},
+  navios:{titulo:'Navios', sub:'Toda requisição é vinculada a um navio', tabela:'navios', supIns:1,
+    campos:[{k:'nome',l:'Nome do navio',req:1,upper:1,ph:'Ex.: NAVIO TESTE 1'},{k:'viagem',l:'Viagem',ph:'Ex.: 026N'},{k:'eta',l:'ETA',type:'date'},{k:'observacao',l:'Observação',type:'area'},{k:'ativo',l:'Ativo (aparece para seleção)',type:'bool',def:true}],
+    cols:[['nome','Navio'],['viagem','Viagem'],['eta','ETA','data'],['observacao','Observação'],['ativo','Situação','ativo']]},
+  armazens:{titulo:'Armazéns e locais', sub:'Onde a equipe vai trabalhar', tabela:'armazens',
+    campos:[{k:'nome',l:'Nome',req:1,upper:1},{k:'ativo',l:'Ativo',type:'bool',def:true}], cols:[['nome','Local'],['ativo','Situação','ativo']]},
+  funcoes:{titulo:'Funções', sub:'Tipos de mão de obra contratados', tabela:'funcoes',
+    campos:[{k:'nome',l:'Nome',req:1,upper:1},{k:'ativo',l:'Ativa',type:'bool',def:true}], cols:[['nome','Função'],['ativo','Situação','ativo']]},
+  turnos:{titulo:'Turnos', sub:'O dia operacional começa às 07h. Conflitos de escala são verificados por horário.', tabela:'turnos',
+    campos:[{k:'codigo',l:'Código',req:1,ph:'Ex.: 07x13'},{k:'descricao',l:'Descrição',req:1},{k:'hora_inicio',l:'Hora de início (0–23)',type:'number',req:1,min:0,max:23},{k:'horas',l:'Duração (horas)',type:'number',req:1,min:1,max:24},
+      {k:'periodo',l:'Período',type:'select',req:1,opts:() => [['DIURNO','Diurno'],['NOTURNO','Noturno']]},{k:'ativo',l:'Ativo',type:'bool',def:true}],
+    cols:[['codigo','Código','turno'],['descricao','Descrição'],['horas','Horas','num'],['periodo','Período'],['ativo','Situação','ativo']]},
+  feriados:{titulo:'Feriados', sub:'Datas cobradas com preço de domingo e feriado. Inclua os feriados municipais.', tabela:'feriados', pk:'data', ordem:'data',
+    campos:[{k:'data',l:'Data',type:'date',req:1},{k:'descricao',l:'Descrição',req:1}], cols:[['data','Data','data'],['descricao','Feriado']]}
+};
+async function vCrud(chave){
+  const cfg = CRUD[chave], pk = cfg.pk || 'id', adm = isAdmin();
+  const st = estado['crud_' + chave] || (estado['crud_' + chave] = {busca:''});
+  const podeNovo = adm || (cfg.supIns && podeRequisitar());
+  pagina(cfg.titulo, cfg.sub, podeNovo ? '<button class="btn primario" id="cr-novo" type="button">Novo</button>' : '', `
+    <div class="filtros"><div class="campo" style="max-width:360px;flex-basis:260px"><label for="cr-b">Buscar</label><input id="cr-b" type="search" value="${esc(st.busca)}"></div></div>
+    <div id="cr-lista"></div>`);
+  const fmt = (v, tipo) => tipo === 'ativo' ? `<span class="pill ${v ? 'APROVADA' : 'inativo'}">${v ? 'Ativo' : 'Inativo'}</span>` : tipo === 'sn' ? (v ? 'Sim' : 'Não') : tipo === 'data' ? fdata(v) : tipo === 'turno' ? `<span class="turno">${esc(v)}</span>` : esc(v ?? '');
+  const desenhar = () => {
+    let rows = C[cfg.tabela] || [];
+    if (cfg.ordem) rows = [...rows].sort((a, b) => String(a[cfg.ordem]).localeCompare(String(b[cfg.ordem])));
+    const t = st.busca.toLowerCase(); if (t) rows = rows.filter(r => cfg.cols.some(([k]) => String(r[k] ?? '').toLowerCase().includes(t)));
+    $('#cr-lista').innerHTML = rows.length ? `<div class="tab-wrap"><table class="tab"><thead><tr>${cfg.cols.map(([, l, tp]) => `<th class="${tp === 'num' ? 'num' : ''}">${l}</th>`).join('')}</tr></thead><tbody>
+      ${rows.map(r => `<tr class="${adm ? 'click' : ''}" data-pk="${esc(r[pk])}">${cfg.cols.map(([k, , tp]) => `<td class="${tp === 'num' ? 'num' : ''}">${fmt(r[k], tp)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`
+      : '<div class="painel vazio">Nenhum registro encontrado.</div>';
+    if (adm) $$('#cr-lista tr.click').forEach(tr => tr.onclick = () => editar(rows.find(r => String(r[pk]) === tr.dataset.pk)));
+  };
+  const recarregar = async () => { await carregarCache([cfg.tabela]); desenhar(); };
+  const editar = reg => {
+    const novo = !reg;
+    const campos = cfg.campos.filter(f => adm || f.k !== 'ativo');
+    modal(novo ? `Novo registro · ${cfg.titulo}` : `Editar · ${cfg.titulo}`, campos.map(f => campo(f, reg ? reg[f.k] : undefined)).join(''), {
+      extra: !novo && adm ? '<button type="button" class="btn perigo" id="cr-del">Excluir</button>' : '',
+      onOk: async form => {
+        const d = lerCampos(form, campos); if (!adm) d.ativo = true;
+        if (novo) await DB.insert(cfg.tabela, d); else await DB.update(cfg.tabela, {[pk]:reg[pk]}, d);
+        toast(novo ? 'Cadastrado.' : 'Alterações salvas.'); await recarregar();
+      }});
+    if (!novo && adm) $('#cr-del').onclick = () => confirmar('Excluir registro', 'Registros já usados em requisições não podem ser excluídos. Nesse caso, desmarque "Ativo".', 'Excluir', async () => {
+      $$('.modal-fundo').forEach(m => m.remove()); await DB.remove(cfg.tabela, {[pk]:reg[pk]}); toast('Registro excluído.'); await recarregar(); }, true);
+  };
+  $('#cr-b').oninput = e => { st.busca = e.target.value; desenhar(); };
+  if ($('#cr-novo')) $('#cr-novo').onclick = () => chave === 'navios' && !adm ? formNavio(async () => desenhar()) : editar(null);
+  desenhar();
+}
+
+/* ---------------------------- Trabalhadores ---------------------------- */
+async function vTrabalhadores(){
+  const st = estado.trab || (estado.trab = {busca:'', emp:'', fun:'', inativos:false});
+  pagina('Trabalhadores', 'Profissionais MEI habilitados por função e vinculados a uma empresa fornecedora', isAdmin() ? '<button class="btn primario" id="t-novo" type="button">Novo trabalhador</button>' : '', `
+    <div class="filtros">
+      <div class="campo" style="flex-basis:220px;max-width:320px"><label for="t-b">Buscar</label><input id="t-b" type="search" value="${esc(st.busca)}" placeholder="Nome, CPF ou CNPJ MEI"></div>
+      <div class="campo"><label for="t-e">Empresa</label><select id="t-e"><option value="">Todas</option>${C.empresas.map(e => `<option value="${e.id}" ${String(st.emp) === String(e.id) ? 'selected' : ''}>${esc(e.nome)}</option>`).join('')}</select></div>
+      <div class="campo"><label for="t-f">Função</label><select id="t-f"><option value="">Todas</option>${C.funcoes.map(f => `<option value="${f.id}" ${String(st.fun) === String(f.id) ? 'selected' : ''}>${esc(f.nome)}</option>`).join('')}</select></div>
+      <label class="check" style="padding-bottom:9px"><input type="checkbox" id="t-i" ${st.inativos ? 'checked' : ''}> Mostrar inativos</label>
+    </div><div id="t-lista"></div>`);
+  const desenhar = () => {
+    const t = st.busca.toLowerCase();
+    const rows = C.trabalhadores.filter(x => (st.inativos || x.ativo) && (!st.emp || x.empresa_id === +st.emp) && (!st.fun || funcoesDe(x.id).includes(+st.fun))
+      && (!t || [x.nome, x.cpf, x.cnpj_mei].some(v => String(v || '').toLowerCase().includes(t))));
+    const cont = C.funcoes.map(f => `${esc(f.nome.toLowerCase())}: <b>${rows.filter(x => funcoesDe(x.id).includes(f.id)).length}</b>`).join(' · ');
+    $('#t-lista').innerHTML = rows.length ? `<p class="muted" style="margin:0 0 8px;font-size:.85rem">${rows.length} trabalhadores · ${cont}</p><div class="tab-wrap"><table class="tab"><thead><tr><th>Nome</th><th>Empresa</th><th>Funções</th><th>CNPJ MEI</th><th>Telefone</th>${isFin() ? '<th>Chave PIX</th>' : ''}<th>Situação</th></tr></thead><tbody>
+      ${rows.map(x => `<tr class="${isAdmin() ? 'click' : ''}" data-id="${x.id}"><td>${esc(x.nome)}</td><td>${esc(byId('empresas', x.empresa_id).nome)}</td><td>${funcoesDe(x.id).map(f => `<span class="chip-s">${esc(byId('funcoes', f).nome)}</span>`).join('')}</td>
+        <td class="mono">${esc(x.cnpj_mei || '')}</td><td>${esc(x.telefone || '')}</td>${isFin() ? `<td class="mono">${esc(x.chave_pix || '')}</td>` : ''}<td><span class="pill ${x.ativo ? 'APROVADA' : 'inativo'}">${x.ativo ? 'Ativo' : 'Inativo'}</span></td></tr>`).join('')}</tbody></table></div>`
+      : '<div class="painel vazio">Nenhum trabalhador encontrado.</div>';
+    $$('#t-lista tr.click').forEach(tr => tr.onclick = () => editar(C.trabalhadores.find(x => x.id === +tr.dataset.id)));
+  };
+  const campos = [{k:'nome',l:'Nome completo',req:1},{k:'cpf',l:'CPF'},{k:'cnpj_mei',l:'CNPJ do MEI'},
+    {k:'empresa_id',l:'Empresa fornecedora',type:'select',req:1,numerico:1,vazio:'Selecione',opts:() => C.empresas.filter(e => e.ativo).map(e => [e.id, e.nome])},
+    {k:'telefone',l:'Telefone'},{k:'chave_pix',l:'Chave PIX'},{k:'observacao',l:'Observação',type:'area'},{k:'ativo',l:'Ativo (disponível para escala)',type:'bool',def:true}];
+  const editar = reg => {
+    const fs = reg ? funcoesDe(reg.id) : [];
+    modal(reg ? 'Editar trabalhador' : 'Novo trabalhador', `<div class="grade">${campos.slice(0, 6).map(f => campo(f, reg ? reg[f.k] : undefined)).join('')}</div>
+      <fieldset style="border:1px solid var(--line);border-radius:6px;padding:10px 12px;display:grid;gap:8px"><legend class="rot" style="padding:0 4px">Funções habilitadas *</legend>
+      ${C.funcoes.map(f => `<label class="check"><input type="checkbox" name="fun" value="${f.id}" ${fs.includes(f.id) ? 'checked' : ''}> ${esc(f.nome)}</label>`).join('')}</fieldset>
+      ${campos.slice(6).map(f => campo(f, reg ? reg[f.k] : undefined)).join('')}`, {
+      onOk: async form => {
+        const d = lerCampos(form, campos);
+        const sel = $$('input[name=fun]:checked', form).map(i => +i.value);
+        if (!sel.length) throw new Error('Marque pelo menos uma função.');
+        let id;
+        if (reg) { id = reg.id; await DB.update('trabalhadores', {id}, d); }
+        else { const n = await DB.insert('trabalhadores', d); id = n.id; }
+        const atuais = reg ? fs : [];
+        for (const f of atuais.filter(f => !sel.includes(f))) await DB.remove('trabalhador_funcoes', {trabalhador_id:id, funcao_id:f});
+        const novas = sel.filter(f => !atuais.includes(f)); if (novas.length) await DB.insert('trabalhador_funcoes', novas.map(f => ({trabalhador_id:id, funcao_id:f})));
+        toast(reg ? 'Trabalhador atualizado.' : 'Trabalhador cadastrado.');
+        await carregarCache(['trabalhadores', 'trabalhador_funcoes']); desenhar();
+      }});
+  };
+  $('#t-b').oninput = e => { st.busca = e.target.value; desenhar(); };
+  $('#t-e').onchange = e => { st.emp = e.target.value; desenhar(); };
+  $('#t-f').onchange = e => { st.fun = e.target.value; desenhar(); };
+  $('#t-i').onchange = e => { st.inativos = e.target.checked; desenhar(); };
+  if ($('#t-novo')) $('#t-novo').onclick = () => editar(null);
+  desenhar();
+}
+
+/* --------------------------- Tabela de preços --------------------------- */
+async function vPrecos(){
+  const st = estado.precos || (estado.precos = {tipo:'UTIL', ref:hoje()});
+  pagina('Tabela de preços', isAdmin() ? 'Valor por diária, por empresa, função e turno. Toque num valor para alterar.' : 'Valor por diária, por empresa, função e turno. Consulta; alterações são feitas pelo administrador.', '', `
+    <div class="filtros">
+      <div class="campo" style="max-width:none;flex:0 0 auto"><span style="font-size:.8rem;font-weight:600;color:var(--muted)">Tipo de dia</span>
+        <div class="seg-ctl" role="group"><button type="button" data-t="UTIL" aria-pressed="${st.tipo === 'UTIL'}">Segunda a sábado</button><button type="button" data-t="DOM_FER" aria-pressed="${st.tipo === 'DOM_FER'}">Domingo e feriado</button></div></div>
+      <div class="campo"><label for="pr-ref">Vigente em</label><input type="date" id="pr-ref" value="${st.ref}"></div>
+    </div>
+    <p class="muted" style="margin:0;font-size:.85rem">Em verde, o menor valor de cada linha. Mudanças de preço criam uma nova vigência e não alteram requisições já lançadas.</p>
+    <div id="pr-corpo" style="display:grid;gap:16px"></div>`);
+  const emps = C.empresas.filter(e => e.ativo);
+  const desenhar = () => {
+    $('#pr-corpo').innerHTML = C.funcoes.filter(f => f.ativo).map(f => `<section class="painel"><h2>${esc(f.nome)}</h2><div class="tab-wrap"><table class="tab matriz"><thead><tr><th>Turno</th>${emps.map(e => `<th class="num">${esc(e.nome)}</th>`).join('')}</tr></thead><tbody>
+      ${C.turnos.filter(t => t.ativo).map(t => { const vs = emps.map(e => precoVigente(e.id, f.id, t.id, st.tipo, st.ref)); const mn = Math.min(...vs.filter(Boolean).map(p => +p.valor));
+        return `<tr><td><span class="turno">${esc(t.codigo)}</span> <span class="muted" style="font-size:.8rem">${t.horas}h</span></td>${emps.map((e, k) => vs[k] ? `<td class="cel ${+vs[k].valor === mn ? 'min' : ''}" data-c="${e.id}|${f.id}|${t.id}" ${isAdmin() ? 'tabindex="0"' : ''}>${brl(vs[k].valor)}</td>` : `<td class="cel nada" data-c="${e.id}|${f.id}|${t.id}" ${isAdmin() ? 'tabindex="0"' : ''}>—</td>`).join('')}</tr>`; }).join('')}
+      </tbody></table></div></section>`).join('');
+    if (isAdmin()) $$('#pr-corpo [data-c]').forEach(td => { td.onclick = () => editar(...td.dataset.c.split('|').map(Number)); td.onkeydown = e => { if (e.key === 'Enter') td.click(); }; });
+  };
+  const editar = (emp, fun, tur) => {
+    const atual = precoVigente(emp, fun, tur, st.tipo, st.ref);
+    const hist = C.tabela_precos.filter(p => p.empresa_id === emp && p.funcao_id === fun && p.turno_id === tur && p.tipo_dia === st.tipo).sort((a, b) => b.vigencia_inicio.localeCompare(a.vigencia_inicio));
+    modal(`${byId('empresas', emp).nome} · ${byId('funcoes', fun).nome}`, `
+      <p class="muted" style="margin:0">Turno <span class="turno">${esc(byId('turnos', tur).codigo)}</span> · ${TIPO_DIA[st.tipo]}</p>
+      <div class="grade"><div class="campo"><label for="pv-v">Valor da diária (R$)</label><input id="pv-v" type="number" step="0.01" min="0" value="${atual ? atual.valor : ''}" placeholder="Em branco = não fornece"></div>
+      <div class="campo"><label for="pv-d">Vale a partir de</label><input id="pv-d" type="date" value="${atual ? (atual.vigencia_inicio > st.ref ? atual.vigencia_inicio : st.ref) : st.ref}"></div></div>
+      <p class="muted" style="margin:0;font-size:.82rem">Se a data for posterior ao início da vigência atual, a vigência atual é encerrada no dia anterior e uma nova é criada. Na mesma data, o valor é corrigido.</p>
+      ${hist.length ? `<div><span class="rot">Histórico</span><div class="tab-wrap" style="margin-top:6px"><table class="tab"><thead><tr><th>Início</th><th>Fim</th><th class="num">Valor</th></tr></thead><tbody>${hist.map(p => `<tr><td>${fdata(p.vigencia_inicio)}</td><td>${p.vigencia_fim ? fdata(p.vigencia_fim) : 'atual'}</td><td class="num">${brl(p.valor)}</td></tr>`).join('')}</tbody></table></div></div>` : ''}`, {
+      onOk: async form => {
+        const vTxt = $('#pv-v', form).value.trim(), d = $('#pv-d', form).value;
+        if (!d) throw new Error('Informe a data de início.');
+        const v = vTxt === '' ? null : Number(vTxt);
+        if (v != null && (isNaN(v) || v < 0)) throw new Error('Valor inválido.');
+        const cur = precoVigente(emp, fun, tur, st.tipo, d);
+        if (v == null) {
+          if (!cur) return;
+          if (d <= cur.vigencia_inicio) await DB.remove('tabela_precos', {id:cur.id}); else await DB.update('tabela_precos', {id:cur.id}, {vigencia_fim:addDias(d, -1)});
+        } else if (cur && d <= cur.vigencia_inicio) await DB.update('tabela_precos', {id:cur.id}, {valor:v});
+        else {
+          if (cur) await DB.update('tabela_precos', {id:cur.id}, {vigencia_fim:addDias(d, -1)});
+          const fut = C.tabela_precos.filter(p => p.empresa_id === emp && p.funcao_id === fun && p.turno_id === tur && p.tipo_dia === st.tipo && p.vigencia_inicio > d).sort((a, b) => a.vigencia_inicio.localeCompare(b.vigencia_inicio))[0];
+          await DB.insert('tabela_precos', {empresa_id:emp, funcao_id:fun, turno_id:tur, tipo_dia:st.tipo, valor:v, vigencia_inicio:d, vigencia_fim:fut ? addDias(fut.vigencia_inicio, -1) : (cur && cur.vigencia_fim) || null});
+        }
+        toast('Preço atualizado.'); await carregarCache(['tabela_precos']); desenhar();
+      }});
+  };
+  $$('[data-t]').forEach(b => b.onclick = () => { st.tipo = b.dataset.t; $$('[data-t]').forEach(x => x.setAttribute('aria-pressed', x === b)); desenhar(); });
+  $('#pr-ref').onchange = e => { st.ref = e.target.value || hoje(); desenhar(); };
+  desenhar();
+}
+
+/* ------------------------------- Usuários ------------------------------- */
+async function vUsuarios(){
+  const us = await DB.list('usuarios', {order:'nome'});
+  pagina('Usuários', 'Administradores aprovam e mantêm cadastros; supervisores lançam requisições; o financeiro fecha e paga os fornecedores', '<button class="btn primario" id="u-novo" type="button">Novo usuário</button>', `
+    <div class="tab-wrap"><table class="tab"><thead><tr><th>Nome</th><th>E-mail</th><th>Perfil</th><th>Situação</th></tr></thead><tbody>
+    ${us.map(u => `<tr class="click" data-id="${esc(u.id)}"><td>${esc(u.nome)}${u.id === ME.id ? ' <span class="muted">(você)</span>' : ''}</td><td>${esc(u.email)}</td><td>${PERFIS[u.perfil] || u.perfil}</td>
+      <td><span class="pill ${u.ativo ? 'APROVADA' : 'ABERTA'}">${u.ativo ? 'Ativo' : 'Aguardando liberação'}</span></td></tr>`).join('')}</tbody></table></div>`);
+  const perfis = () => [['SUPERVISOR','Supervisor'],['FINANCEIRO','Financeiro'],['ADMIN','Administrador']];
+  $('#u-novo').onclick = () => {
+    const cs = [{k:'nome',l:'Nome',req:1},{k:'email',l:'E-mail',type:'email',req:1},{k:'senha',l:'Senha inicial (mín. 6 caracteres)',type:'text',req:1},{k:'perfil',l:'Perfil',type:'select',req:1,opts:perfis}];
+    modal('Novo usuário', cs.map(f => campo(f)).join('') + '<p class="muted" style="margin:0;font-size:.82rem">Passe a senha inicial ao usuário por um canal seguro.</p>', {okTxt:'Criar usuário', onOk: async fm => {
+      const d = lerCampos(fm, cs); if (String(d.senha).length < 6) throw new Error('A senha precisa ter pelo menos 6 caracteres.');
+      await DB.criarUsuario(d); toast('Usuário criado.'); vUsuarios(); }});
+  };
+  $$('tr.click').forEach(tr => tr.onclick = () => {
+    const u = us.find(x => String(x.id) === tr.dataset.id), eu = u.id === ME.id;
+    const cs = [{k:'nome',l:'Nome',req:1},{k:'perfil',l:'Perfil',type:'select',req:1,opts:perfis},{k:'ativo',l:'Acesso liberado',type:'bool'}];
+    modal('Editar usuário', `<p class="muted" style="margin:0">${esc(u.email)}</p>` + cs.map(f => campo(f, u[f.k])).join(''), {onOk: async fm => {
+      const d = lerCampos(fm, cs); if (eu && (!d.ativo || d.perfil !== 'ADMIN')) throw new Error('Você não pode remover o seu próprio acesso de administrador.');
+      await DB.update('usuarios', {id:u.id}, d); toast('Usuário atualizado.'); vUsuarios(); }});
+  });
+}
+
+/* ------------------------------- Auditoria ------------------------------- */
+async function vAuditoria(){
+  const log = await DB.list('vw_auditoria', {order:'id desc', limit:300});
+  const TAB = {fechamentos:'Fechamento', requisicoes:'Requisição', requisicao_itens:'Item de requisição', tabela_precos:'Preço', trabalhadores:'Trabalhador', trabalhador_funcoes:'Função do trabalhador', empresas:'Empresa', usuarios:'Usuário', feriados:'Feriado', turnos:'Turno'};
+  const ACAO = {INSERT:'Inclusão', UPDATE:'Alteração', DELETE:'Exclusão'};
+  const ignorar = ['atualizado_em', 'criado_em', 'senha', 'aprovado_por', 'conferido_por', 'pago_por', 'criado_por', 'supervisor_id'];
+  const mudancas = a => {
+    if (a.acao !== 'UPDATE') return '';
+    const o = a.dados_antigos || {}, n = a.dados_novos || {};
+    return Object.keys(n).filter(k => !ignorar.includes(k) && JSON.stringify(o[k]) !== JSON.stringify(n[k])).map(k => `${esc(k)}: ${esc(o[k] ?? '—')} → <b>${esc(n[k] ?? '—')}</b>`).join('<br>');
+  };
+  pagina('Auditoria', 'Últimas 300 alterações registradas pelo banco', '', log.length ? `<div class="tab-wrap"><table class="tab"><thead><tr><th>Quando</th><th>Usuário</th><th>Registro</th><th>Ação</th><th>O que mudou</th></tr></thead><tbody>
+    ${log.map(a => `<tr><td style="white-space:nowrap">${fdh(a.em)}</td><td>${esc(a.usuario || 'Sistema')}</td><td>${esc(TAB[a.tabela] || a.tabela)} <span class="mono muted">#${esc(a.registro_id)}</span></td><td>${ACAO[a.acao] || a.acao}</td><td class="dif">${mudancas(a)}</td></tr>`).join('')}
+    </tbody></table></div>` : '<div class="painel vazio">Nenhuma alteração registrada.</div>');
+}
+
+/* ------------------------------ Fechamentos ------------------------------ */
+// Diárias aprovadas ainda não fechadas, agrupadas por empresa
+function pendentesPorEmpresa(itens){
+  const m = new Map();
+  for (const i of itens) {
+    if (i.status !== 'APROVADA' || i.fechamento_id) continue;
+    const g = m.get(i.empresa_id) || {empresa_id:i.empresa_id, empresa:i.empresa, n:0, hh:0, v:0, de:i.data, ate:i.data};
+    g.n++; g.hh += i.horas; g.v += Number(i.valor || 0); if (i.data < g.de) g.de = i.data; if (i.data > g.ate) g.ate = i.data;
+    m.set(i.empresa_id, g);
+  }
+  return [...m.values()].sort((a, b) => b.v - a.v);
+}
+async function vFechamentos(){
+  const st = estado.fech || (estado.fech = {status:''});
+  const [fs, itens] = await Promise.all([DB.list('vw_fechamentos', {order:'id desc'}), DB.list('vw_itens')]);
+  const pend = pendentesPorEmpresa(itens);
+  const abertas = itens.filter(i => i.status === 'ABERTA');
+  pagina('Fechamentos', 'Diárias aprovadas agrupadas por fornecedor e período, para conferir a NF e registrar o pagamento',
+    '<button class="btn primario" id="fe-novo" type="button">Novo fechamento</button>', `
+    <section class="painel"><div class="cab-p"><h2>A fechar</h2><span class="muted" style="font-size:.85rem">Diárias aprovadas que ainda não entraram em nenhum fechamento</span></div>
+      ${pend.length ? `<div class="tab-wrap"><table class="tab"><thead><tr><th>Empresa</th><th>Período das diárias</th><th class="num">Diárias</th><th class="num">HH</th><th class="num">Valor</th><th></th></tr></thead><tbody>
+      ${pend.map(g => `<tr><td>${esc(g.empresa)}</td><td>${fdata(g.de)} a ${fdata(g.ate)}</td><td class="num">${n0(g.n)}</td><td class="num">${n0(g.hh)}</td><td class="num"><b>${brl(g.v)}</b></td>
+        <td class="num"><button class="btn peq" type="button" data-fechar="${g.empresa_id}|${g.de}|${g.ate}">Fechar</button></td></tr>`).join('')}</tbody>
+      <tfoot><tr><td colspan="2">Total a fechar</td><td class="num">${n0(pend.reduce((s, g) => s + g.n, 0))}</td><td class="num">${n0(pend.reduce((s, g) => s + g.hh, 0))}</td><td class="num">${brl(pend.reduce((s, g) => s + g.v, 0))}</td><td></td></tr></tfoot></table></div>`
+      : '<div class="vazio">Todas as diárias aprovadas já estão em algum fechamento.</div>'}
+      ${abertas.length ? `<p class="nota" style="margin:12px 0 0">${n0(abertas.length)} diárias ainda estão em requisições <b>abertas</b> (${brl(abertas.reduce((s, i) => s + Number(i.valor || 0), 0))}). Elas só entram no fechamento depois de aprovadas.</p>` : ''}
+    </section>
+    <div class="filtros"><div class="campo"><label for="fe-st">Situação</label><select id="fe-st"><option value="">Todas</option>${Object.entries(ST_FECH).map(([k, t]) => `<option value="${k}" ${st.status === k ? 'selected' : ''}>${t}</option>`).join('')}</select></div></div>
+    <div id="fe-lista"></div>`);
+  const desenhar = () => {
+    const rows = fs.filter(f => !st.status || f.status === st.status);
+    $('#fe-lista').innerHTML = rows.length ? `<div class="tab-wrap"><table class="tab"><thead><tr><th>Nº</th><th>Empresa</th><th>Período</th><th class="num">Diárias</th><th class="num">Sistema</th><th>NF</th><th class="num">Valor NF</th><th class="num">Diferença</th><th>Situação</th></tr></thead><tbody>
+      ${rows.map(f => `<tr class="click" data-id="${f.id}"><td><a class="reqnum" href="#fec-${f.id}">${fecNum(f.id)}</a></td><td>${esc(f.empresa)}</td><td style="white-space:nowrap">${fdata(f.data_inicio)} a ${fdata(f.data_fim)}</td>
+        <td class="num">${n0(f.qtd_diarias)}</td><td class="num">${brl(f.valor_sistema)}</td><td class="mono">${esc(f.nf_numero || '—')}</td><td class="num">${brl(f.nf_valor)}</td>
+        <td class="num" style="${f.diferenca ? 'color:var(--bad);font-weight:600' : ''}">${f.diferenca == null ? '—' : brl(f.diferenca)}</td><td><span class="pill ${f.status}">${ST_FECH[f.status]}</span></td></tr>`).join('')}</tbody></table></div>`
+      : '<div class="painel vazio">Nenhum fechamento nesse filtro.</div>';
+    $$('#fe-lista tr.click').forEach(tr => tr.onclick = e => { if (e.target.tagName !== 'A') location.hash = 'fec-' + tr.dataset.id; });
+  };
+  $('#fe-st').onchange = e => { st.status = e.target.value; desenhar(); };
+  $('#fe-novo').onclick = () => novoFechamento(itens);
+  $$('[data-fechar]').forEach(b => b.onclick = () => { const [e, de, ate] = b.dataset.fechar.split('|'); novoFechamento(itens, +e, de, ate); });
+  desenhar();
+}
+function novoFechamento(itens, emp, de, ate){
+  de = de || inicioMes(); ate = ate || hoje();
+  const m = modal('Novo fechamento', `
+    <p class="muted" style="margin:0">Inclui todas as diárias <b>aprovadas</b> da empresa no período que ainda não estão em outro fechamento.</p>
+    <div class="campo"><label for="nf-emp">Empresa *</label><select id="nf-emp" required><option value="">Selecione</option>${C.empresas.map(e => `<option value="${e.id}" ${e.id === emp ? 'selected' : ''}>${esc(e.nome)}</option>`).join('')}</select></div>
+    <div class="grade"><div class="campo"><label for="nf-de">De *</label><input type="date" id="nf-de" value="${de}"></div><div class="campo"><label for="nf-ate">Até *</label><input type="date" id="nf-ate" value="${ate}"></div></div>
+    <div class="nota" id="nf-prev">Selecione a empresa.</div>`, {okTxt:'Gerar fechamento', onOk: async fm => {
+      const e = +$('#nf-emp', fm).value, d1 = $('#nf-de', fm).value, d2 = $('#nf-ate', fm).value;
+      if (!e) throw new Error('Selecione a empresa.'); if (!d1 || !d2) throw new Error('Informe o período.');
+      const id = await DB.rpc('gerar_fechamento', {p_empresa_id:e, p_inicio:d1, p_fim:d2});
+      toast(fecNum(id) + ' gerado.'); location.hash = 'fec-' + id;
+    }});
+  const prev = () => {
+    const e = +$('#nf-emp', m.el).value, d1 = $('#nf-de', m.el).value, d2 = $('#nf-ate', m.el).value;
+    if (!e || !d1 || !d2) { $('#nf-prev', m.el).textContent = 'Selecione a empresa e o período.'; return; }
+    const noPer = itens.filter(i => i.empresa_id === e && i.data >= d1 && i.data <= d2 && i.status !== 'CANCELADA');
+    const ok = noPer.filter(i => i.status === 'APROVADA' && !i.fechamento_id), ab = noPer.filter(i => i.status === 'ABERTA'), ja = noPer.filter(i => i.fechamento_id);
+    $('#nf-prev', m.el).innerHTML = `Entram <b>${n0(ok.length)} diárias</b> · <b>${brl(ok.reduce((s, i) => s + Number(i.valor || 0), 0))}</b>`
+      + (ab.length ? `<br><span style="color:var(--signal)">${n0(ab.length)} diárias em requisições abertas ficam de fora (aprovar antes).</span>` : '')
+      + (ja.length ? `<br>${n0(ja.length)} diárias do período já estão em outro fechamento.` : '');
+  };
+  ['#nf-emp','#nf-de','#nf-ate'].forEach(s => $(s, m.el).onchange = prev); prev();
+}
+async function vFechamento(id){
+  const [fs, itens] = await Promise.all([DB.list('vw_fechamentos', {eq:{id}}), DB.list('vw_itens', {eq:{fechamento_id:id}, order:['data','requisicao_id']})]);
+  const f = fs[0]; if (!f) throw new Error('Fechamento não encontrado.');
+  const emConf = f.status === 'EM_CONFERENCIA', hh = itens.reduce((s, i) => s + i.horas, 0);
+  const temDif = f.nf_valor != null && Math.abs(f.diferenca) > 0.004;
+  const porNavio = [...itens.reduce((m, i) => { const g = m.get(i.navio_id) || {navio:i.navio, viagem:i.viagem, n:0, hh:0, v:0}; g.n++; g.hh += i.horas; g.v += Number(i.valor || 0); return m.set(i.navio_id, g); }, new Map()).values()].sort((a, b) => b.v - a.v);
+  const acoes = [
+    emConf ? '<button class="btn primario" id="fd-conf" type="button">Marcar como conferido</button>' : '',
+    f.status === 'CONFERIDO' ? '<button class="btn primario" id="fd-pagar" type="button">Registrar pagamento</button>' : '',
+    f.status === 'CONFERIDO' ? '<button class="btn" id="fd-voltar" type="button">Voltar para conferência</button>' : '',
+    f.status === 'PAGO' && isAdmin() ? '<button class="btn perigo" id="fd-estornar" type="button">Estornar pagamento</button>' : '',
+    '<button class="btn" id="fd-csv" type="button">Baixar CSV</button>',
+    emConf ? '<button class="btn perigo" id="fd-desf" type="button">Desfazer fechamento</button>' : ''].join('');
+  pagina(`<span class="reqnum">${fecNum(f.id)}</span>`, `${esc(f.empresa)} · diárias de ${fdata(f.data_inicio)} a ${fdata(f.data_fim)}`, acoes, `
+    <section class="painel"><dl class="ficha" style="margin:0">
+      <div><dt>Situação</dt><dd><span class="pill ${f.status}">${ST_FECH[f.status]}</span></dd></div>
+      <div><dt>Diárias</dt><dd>${n0(f.qtd_diarias)} · ${n0(hh)} HH</dd></div>
+      <div><dt>Gerado</dt><dd>${esc(f.criado_por_nome || '')} · ${fdh(f.criado_em)}</dd></div>
+      ${f.conferido_em ? `<div><dt>Conferido</dt><dd>${esc(f.conferido_por_nome || '')} · ${fdh(f.conferido_em)}</dd></div>` : ''}
+      ${f.status === 'PAGO' ? `<div><dt>Pago em</dt><dd>${fdata(f.data_pagamento)} · ${esc(f.pago_por_nome || '')}</dd></div>` : ''}
+    </dl></section>
+    <section class="painel"><div class="cab-p"><h2>Conferência da NF</h2>${emConf ? '' : '<span class="muted" style="font-size:.85rem">Para alterar a NF, volte para conferência</span>'}</div>
+      <div class="confere">
+        <div class="caixa"><span class="rot">Sistema</span><b>${brl(f.valor_sistema)}</b><small class="muted">soma das diárias aprovadas</small></div>
+        <div class="caixa"><span class="rot">Nota fiscal</span><b>${brl(f.nf_valor)}</b><small class="muted">${f.nf_numero ? 'NF ' + esc(f.nf_numero) + (f.nf_data ? ' · ' + fdata(f.nf_data) : '') : 'não informada'}</small></div>
+        <div class="caixa ${f.nf_valor == null ? '' : temDif ? 'dif' : 'ok'}"><span class="rot">Diferença</span><b>${f.nf_valor == null ? '—' : brl(f.diferenca)}</b><small class="muted">${f.nf_valor == null ? 'aguardando NF' : temDif ? 'exige justificativa' : 'NF confere com o sistema'}</small></div>
+      </div>
+      <form id="fd-form" novalidate style="display:grid;gap:12px;margin-top:14px">
+        <div class="grade">
+          <div class="campo"><label for="fd-num">Número da NF</label><input id="fd-num" value="${esc(f.nf_numero || '')}" ${emConf ? '' : 'disabled'}></div>
+          <div class="campo"><label for="fd-data">Emissão</label><input id="fd-data" type="date" value="${f.nf_data || ''}" ${emConf ? '' : 'disabled'}></div>
+          <div class="campo"><label for="fd-valor">Valor da NF (R$)</label><input id="fd-valor" type="number" step="0.01" min="0" value="${f.nf_valor ?? ''}" ${emConf ? '' : 'disabled'}></div>
+        </div>
+        <div class="campo"><label for="fd-just">Justificativa da diferença</label><textarea id="fd-just" placeholder="Ex.: NF inclui 1 diária de 12/11 lançada fora do sistema" ${emConf ? '' : 'disabled'}>${esc(f.justificativa || '')}</textarea></div>
+        <div class="campo"><label for="fd-obs">Observação</label><textarea id="fd-obs">${esc(f.observacao || '')}</textarea></div>
+        <div class="erro" id="fd-erro" hidden></div>
+        <div class="acoes"><button class="btn" type="submit">Salvar</button></div>
+      </form>
+    </section>
+    <section class="painel"><h2>Por navio</h2><div class="tab-wrap"><table class="tab"><thead><tr><th>Navio</th><th class="num">Diárias</th><th class="num">HH</th><th class="num">Valor</th></tr></thead><tbody>
+      ${porNavio.map(g => `<tr><td>${esc(g.navio)}${g.viagem ? ` <span class="muted">· ${esc(g.viagem)}</span>` : ''}</td><td class="num">${n0(g.n)}</td><td class="num">${n0(g.hh)}</td><td class="num">${brl(g.v)}</td></tr>`).join('')}</tbody></table></div></section>
+    <section class="painel"><h2>Diárias incluídas</h2><div class="tab-wrap"><table class="tab"><thead><tr><th>Data</th><th>Requisição</th><th>Turno</th><th>Navio</th><th>Trabalhador</th><th>Função</th><th class="num">Valor</th></tr></thead><tbody>
+      ${itens.map(i => `<tr><td style="white-space:nowrap">${fdata(i.data)}${i.tipo_dia === 'DOM_FER' ? ' <span class="tag DOM_FER">Dom/fer</span>' : ''}</td><td><a class="reqnum" href="#req-${i.requisicao_id}">${reqNum(i.requisicao_id)}</a></td><td><span class="turno">${esc(i.turno)}</span></td>
+        <td>${esc(i.navio)}</td><td>${esc(i.trabalhador)}</td><td>${esc(i.funcao)}</td><td class="num">${brl(i.valor)}</td></tr>`).join('')}</tbody>
+      <tfoot><tr><td colspan="6">${n0(itens.length)} diárias</td><td class="num">${brl(f.valor_sistema)}</td></tr></tfoot></table></div></section>`);
+  const ler = () => {
+    const o = {observacao:$('#fd-obs').value.trim() || null};
+    if (emConf) {
+      const v = $('#fd-valor').value.trim();
+      if (v !== '' && (isNaN(Number(v)) || Number(v) < 0)) throw new Error('Valor da NF inválido.');
+      Object.assign(o, {nf_numero:$('#fd-num').value.trim() || null, nf_data:$('#fd-data').value || null, nf_valor:v === '' ? null : Number(v), justificativa:$('#fd-just').value.trim() || null});
+    }
+    return o;
+  };
+  const acao = async (patch, msg) => { const e = $('#fd-erro'); e.hidden = true; try { await DB.update('fechamentos', {id}, patch); toast(msg); vFechamento(id); } catch (x) { e.textContent = x.message; e.hidden = false; toast(x.message, 1); } };
+  $('#fd-form').addEventListener('submit', e => { e.preventDefault(); try { acao(ler(), 'Fechamento salvo.'); } catch (x) { $('#fd-erro').textContent = x.message; $('#fd-erro').hidden = false; } });
+  if ($('#fd-conf')) $('#fd-conf').onclick = () => { try { acao({...ler(), status:'CONFERIDO'}, 'Fechamento conferido.'); } catch (x) { toast(x.message, 1); } };
+  if ($('#fd-voltar')) $('#fd-voltar').onclick = () => acao({status:'EM_CONFERENCIA'}, 'Fechamento voltou para conferência.');
+  if ($('#fd-estornar')) $('#fd-estornar').onclick = () => confirmar('Estornar pagamento', 'O fechamento volta para "Conferido" e a data de pagamento é apagada.', 'Estornar', async () => { await DB.update('fechamentos', {id}, {status:'CONFERIDO'}); toast('Pagamento estornado.'); vFechamento(id); }, true);
+  if ($('#fd-pagar')) $('#fd-pagar').onclick = () => modal('Registrar pagamento', `<p class="muted" style="margin:0">${esc(f.empresa)} · NF ${esc(f.nf_numero || '')} · ${brl(f.nf_valor)}</p>
+    <div class="campo"><label for="pg-data">Data do pagamento *</label><input type="date" id="pg-data" value="${hoje()}"></div>`, {okTxt:'Registrar pagamento', onOk: async fm => {
+      const d = $('#pg-data', fm).value; if (!d) throw new Error('Informe a data do pagamento.');
+      await DB.update('fechamentos', {id}, {status:'PAGO', data_pagamento:d}); toast('Pagamento registrado.'); vFechamento(id); }});
+  if ($('#fd-desf')) $('#fd-desf').onclick = () => confirmar('Desfazer fechamento', `As ${f.qtd_diarias} diárias voltam para "a fechar" e as requisições são destravadas.`, 'Desfazer', async () => { await DB.rpc('desfazer_fechamento', {p_id:id}); toast(fecNum(id) + ' desfeito.'); location.hash = 'fechamentos'; }, true);
+  $('#fd-csv').onclick = () => exportarCSV(itens, `${fecNum(id)}_${f.empresa}.csv`.replace(/[^\w.-]+/g, '_'));
+}
+
+boot();
+</script>
+</body>
+</html>
