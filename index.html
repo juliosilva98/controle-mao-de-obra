@@ -234,10 +234,8 @@ table.tab{width:100%;border-collapse:collapse;font-size:.9rem}
 .grupo-func{margin-top:6px}
 .grupo-func h3{font-size:.8rem;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:14px 0 6px}
 .lista-trab{display:grid;gap:6px}
-.concluir-req{display:flex;flex-wrap:wrap;align-items:center;justify-content:flex-end;gap:10px 16px;margin:4px 0 24px}
-.concluir-req .muted{flex:1 1 260px;font-size:.88rem}
-.concluir-req .btn{padding:12px 22px;font-size:1rem}
-@media (max-width:640px){.concluir-req .btn{flex:1 1 100%}}
+.btn.concluir{background:#1E8A4C;border-color:#1E8A4C;color:#fff;font-weight:700;box-shadow:0 2px 10px rgba(30,138,76,.35)}
+.btn.concluir:hover{background:#176F3D;border-color:#176F3D;color:#fff;box-shadow:0 4px 14px rgba(30,138,76,.45)}
 /* nome à esquerda; valor e botões à direita, descendo para a linha de baixo quando não cabem (celular) */
 .trab{display:flex;flex-wrap:wrap;justify-content:space-between;gap:8px 12px;align-items:center;padding:10px 12px;border:1px solid var(--line);border-radius:6px;background:var(--surface)}
 .trab>div:first-child{flex:1 1 170px;min-width:0}
@@ -1270,6 +1268,8 @@ async function vDetalhe(id){
   const total = itens.reduce((s, i) => s + Number(i.valor || 0), 0), hh = itens.reduce((s, i) => s + i.horas, 0);
   const fer = C.feriados.find(x => x.data === r.data);
   const acoes = [
+    '<a class="btn" href="#requisicoes">Voltar</a>',
+    editavel && itens.length ? '<button class="btn concluir" id="d-concluir" type="button">✓ Concluir requisição</button>' : '',
     adm && r.status === 'ABERTA' ? '<button class="btn primario" id="d-aprovar" type="button">Aprovar</button>' : '',
     editavel ? '<button class="btn" id="d-editar" type="button">Editar dados</button>' : '',
     podeRequisitar() ? '<button class="btn" id="d-dup" type="button">Duplicar</button>' : '',
@@ -1299,8 +1299,7 @@ async function vDetalhe(id){
         <div class="lado">${veValores() ? (byId('empresas', i.empresa_id).propria ? '<span class="muted" style="font-size:.85rem">próprio</span>' : `<span class="mono">${brl(i.valor)}</span>`) : ''}${editavel && i.por_funcao ? `<button class="btn peq" type="button" data-nome="${i.id}">${i.nome_trabalhador ? 'Alterar nome' : 'Pôr nome'}</button>` : ''}${editavel ? `<button class="btn peq perigo" type="button" data-rem="${i.id}" aria-label="Remover ${esc(i.trabalhador)}">Remover</button>` : ''}</div></div>`).join('')}</div></div>`).join('')
         : '<div class="vazio">Nenhum trabalhador nesta requisição ainda.</div>'}
     </section>
-    ${editavel ? '<section class="painel" id="d-add"></section>' : ''}
-    ${editavel && itens.length ? `<div class="concluir-req"><span class="muted">Terminou de lançar as pessoas? A requisição fica salva e continua podendo ser editada pela lista de Requisições.</span><button class="btn primario" id="d-concluir" type="button">Concluir requisição</button></div>` : ''}`);
+    ${editavel ? '<section class="painel" id="d-add"></section>' : ''}`);
 
   if ($('#topo-t')) $('#topo-t').textContent = reqNum(r.id);
   // pré-carrega as bibliotecas do PDF para o "Enviar" abrir rápido
