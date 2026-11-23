@@ -626,6 +626,15 @@ function DemoDB(){
     },
     async sessao(){ const id = store.get(KSES); const u = S.usuarios.find(u => u.id === id && u.ativo); me = u || null; return u ? {...u, senha:undefined} : null; },
     async logout(){ me = null; store.del(KSES); },
+    async trocarSenha(atual, nova){
+      if (!me || me.senha !== atual) falha('A senha atual não confere.');
+      me.senha = nova; salvar();
+    },
+    async definirSenha(id, nova){
+      if (!adm()) falha('Somente o administrador pode redefinir senhas.');
+      const u = S.usuarios.find(x => x.id === id); if (!u) falha('Usuário não encontrado.');
+      u.senha = nova; salvar();
+    },
     async criarUsuario({nome, email, senha, perfil}){
       if (!adm()) falha('Você não tem permissão para esta operação.');
       if (S.usuarios.some(u => u.email.toLowerCase() === email.toLowerCase())) falha('Já existe um usuário com este e-mail.');
@@ -773,6 +782,15 @@ function SupaDB(cfg){
     async rpc(nome, args){ const {data, error} = await sb.rpc(nome, args); if (error) erro(error); return data; },
     async sessao(){ const {data:{session}} = await sb.auth.getSession(); if (!session) return null; const u = await perfil(); return u && u.ativo ? u : null; },
     async logout(){ await sb.auth.signOut(); },
+    // o próprio usuário: confere a senha atual e grava a nova
+    async trocarSenha(atual, nova){
+      const {data:{user}} = await sb.auth.getUser(); if (!user) throw new Error('Sessão expirada. Entre de novo.');
+      const r = await sb.auth.signInWithPassword({email:user.email, password:atual});
+      if (r.error) throw new Error('A senha atual não confere.');
+      const {error} = await sb.auth.updateUser({password:nova}); if (error) erro(error);
+    },
+    // administrador redefine a senha de outro usuário (função do banco, só para ADMIN)
+    async definirSenha(id, nova){ await this.rpc('admin_definir_senha', {p_usuario:id, p_senha:nova}); },
     async criarUsuario({nome, email, senha, perfil}){
       // cliente separado para não derrubar a sessão do administrador
       const tmp = window.supabase.createClient(cfg.url, cfg.key, {auth:{persistSession:false, autoRefreshToken:false, detectSessionInUrl:false, storageKey:'controle-mo-cadastro'}});
@@ -881,6 +899,7 @@ async function entrar(){
       <div class="rodape">
         <div><b>${esc(ME.nome)}</b><div style="font-size:.8rem;color:var(--nav-dim)">${PERFIS[ME.perfil] || ME.perfil}</div></div>
         ${DB.modo === 'demo' && isAdmin() ? '<button id="b-reset" type="button">Restaurar dados de exemplo</button>' : ''}
+        <button id="b-senha" type="button">Trocar minha senha</button>
         <button id="b-sair" type="button">Sair</button>
       </div>
     </nav>
@@ -890,6 +909,17 @@ async function entrar(){
     </div>
   </div>`;
   $('#b-sair').onclick = async () => { await DB.logout(); ME = null; C = {}; location.hash = ''; telaLogin(); };
+  $('#b-senha').onclick = () => modal('Trocar minha senha', `
+    <div class="campo"><label for="s-atual">Senha atual</label><input id="s-atual" type="password" autocomplete="current-password"></div>
+    <div class="campo"><label for="s-nova">Nova senha (mín. 6 caracteres)</label><input id="s-nova" type="password" autocomplete="new-password"></div>
+    <div class="campo"><label for="s-conf">Repita a nova senha</label><input id="s-conf" type="password" autocomplete="new-password"></div>`,
+    {okTxt:'Trocar senha', onOk: async fm => {
+      const a = $('#s-atual', fm).value, n = $('#s-nova', fm).value, c = $('#s-conf', fm).value;
+      if (!a) throw new Error('Informe a senha atual.');
+      if (n.length < 6) throw new Error('A nova senha precisa ter pelo menos 6 caracteres.');
+      if (n !== c) throw new Error('A confirmação não é igual à nova senha.');
+      if (n === a) throw new Error('A nova senha precisa ser diferente da atual.');
+      await DB.trocarSenha(a, n); toast('Senha alterada. Use a nova senha no próximo acesso.'); }});
   if ($('#b-reset')) $('#b-reset').onclick = () => confirmar('Restaurar dados de exemplo', 'Todos os dados desta demonstração serão apagados e recriados.', 'Restaurar', async () => { DB.resetar(); await DB.logout(); ME = null; telaLogin(); }, true);
   $('#b-menu').onclick = () => alternarMenu(true);
   window.onhashchange = rotear;
@@ -1583,9 +1613,16 @@ async function vUsuarios(){
   $$('tr.click').forEach(tr => tr.onclick = () => {
     const u = us.find(x => String(x.id) === tr.dataset.id), eu = u.id === ME.id;
     const cs = [{k:'nome',l:'Nome',req:1},{k:'perfil',l:'Perfil',type:'select',req:1,opts:perfis},{k:'ativo',l:'Acesso liberado',type:'bool'}];
-    modal('Editar usuário', `<p class="muted" style="margin:0">${esc(u.email)}</p>` + cs.map(f => campo(f, u[f.k])).join(''), {onOk: async fm => {
+    const m = modal('Editar usuário', `<p class="muted" style="margin:0">${esc(u.email)}</p>` + cs.map(f => campo(f, u[f.k])).join('')
+      + (eu ? '<p class="muted" style="margin:0;font-size:.82rem">Para a sua própria senha, use "Trocar minha senha" no menu.</p>' : '<div><button class="btn" type="button" id="u-senha">Redefinir senha</button></div>'), {onOk: async fm => {
       const d = lerCampos(fm, cs); if (eu && (!d.ativo || d.perfil !== 'ADMIN')) throw new Error('Você não pode remover o seu próprio acesso de administrador.');
       await DB.update('usuarios', {id:u.id}, d); toast('Usuário atualizado.'); vUsuarios(); }});
+    const bs = m && m.el ? $('#u-senha', m.el) : $('#u-senha');
+    if (bs) bs.onclick = () => modal('Redefinir senha', `<p class="muted" style="margin:0">${esc(u.nome)} · ${esc(u.email)}</p>
+      <div class="campo"><label for="r-nova">Nova senha (mín. 6 caracteres)</label><input id="r-nova" type="text" autocomplete="off"></div>
+      <p class="muted" style="margin:0;font-size:.82rem">Passe a nova senha ao usuário por um canal seguro e peça que ele a troque em "Trocar minha senha".</p>`,
+      {okTxt:'Redefinir', onOk: async fm => { const n = $('#r-nova', fm).value; if (n.length < 6) throw new Error('A senha precisa ter pelo menos 6 caracteres.');
+        await DB.definirSenha(u.id, n); toast('Senha redefinida.'); }});
   });
 }
 

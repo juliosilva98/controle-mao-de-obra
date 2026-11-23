@@ -631,6 +631,20 @@ revoke execute on function public.desfazer_fechamento(bigint) from public, anon;
 grant execute on function public.gerar_fechamento(bigint, date, date) to authenticated;
 grant execute on function public.desfazer_fechamento(bigint) to authenticated;
 
+-- Administrador redefine a senha de outro usuário (o próprio usuário troca a sua pela tela, com a senha atual)
+create or replace function public.admin_definir_senha(p_usuario uuid, p_senha text)
+returns void language plpgsql security definer set search_path = public, extensions as $$
+begin
+  if not public.is_admin() then raise exception 'Somente o administrador pode redefinir senhas.'; end if;
+  if length(coalesce(p_senha, '')) < 6 then raise exception 'A senha precisa ter pelo menos 6 caracteres.'; end if;
+  update auth.users
+     set encrypted_password = extensions.crypt(p_senha, extensions.gen_salt('bf')), updated_at = now()
+   where id = p_usuario;
+  if not found then raise exception 'Usuário não encontrado.'; end if;
+end $$;
+revoke execute on function public.admin_definir_senha(uuid, text) from public, anon;
+grant execute on function public.admin_definir_senha(uuid, text) to authenticated;
+
 -- ---------------------------------------------------------------------
 -- 7. VIEWS DE CONSULTA E RELATÓRIO
 --    (valores aparecem somente para ADMIN e FINANCEIRO)
