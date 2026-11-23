@@ -25,6 +25,7 @@ Sistema web para supervisores informarem a mão de obra requisitada (por **navio
 4. **Conflito de turno:** o mesmo trabalhador não pode estar em turnos sobrepostos no mesmo dia (ex.: 07x13 e 07x19).
 5. **Fluxo:** supervisor só altera requisição própria e *Aberta*; só o administrador aprova. Navio novo só é cadastrado pelo administrador ou pelo financeiro.
 12. **Número do espelho:** cada requisição recebe do banco um sequencial por ano (ex.: *2026/0001*), que não pula e não pode ser alterado.
+13. **Terceirizadas por função:** empresas marcadas como *Requisição por função* (cadastro de Empresas) não precisam de trabalhador cadastrado. Na requisição, o supervisor escolhe empresa, função e quantidade; cada pessoa vira uma diária com preço da tabela da empresa, e o nome é opcional (fica só na requisição). Para essas linhas não há checagem de habilitação nem de conflito de turno. As demais empresas continuam com trabalhador cadastrado.
 
 **Espelho da requisição (PDF):** na tela da requisição, o botão *Espelho PDF* gera um PDF em folha carta na horizontal, leve (cerca de 50 KB), com o número, os dados, a lista de trabalhadores e um QR code que abre a requisição no sistema (só com login). Não mostra valores. No celular, o botão *Enviar (WhatsApp)* abre o compartilhamento direto; no computador, o PDF é baixado para anexar no WhatsApp como *Documento*.
 6. **Sigilo de preço:** tabela de preços e valores só aparecem para administrador e financeiro (também na API).

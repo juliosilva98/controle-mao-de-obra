@@ -216,6 +216,15 @@ create table if not exists public.requisicao_itens (
 );
 create index if not exists ix_item_trab on public.requisicao_itens(trabalhador_id);
 
+-- Empresas terceirizadas "por função": a requisição informa empresa + função
+-- (sem cadastro de cada trabalhador); o nome da pessoa é opcional e fica só na requisição.
+alter table public.empresas add column if not exists por_funcao boolean not null default false;
+alter table public.requisicao_itens alter column trabalhador_id drop not null;
+alter table public.requisicao_itens add column if not exists nome_trabalhador text;
+alter table public.requisicao_itens drop constraint if exists ck_item_origem;
+alter table public.requisicao_itens add constraint ck_item_origem
+  check (trabalhador_id is not null or empresa_id is not null);
+
 -- ---------------------------------------------------------------------
 -- 4b. FECHAMENTOS (FINANCEIRO): lote de diárias aprovadas de um fornecedor x período
 -- ---------------------------------------------------------------------
@@ -380,6 +389,8 @@ declare
   r   public.requisicoes%rowtype;
   t   public.turnos%rowtype;
   tb  public.trabalhadores%rowtype;
+  e   public.empresas%rowtype;
+  v_quem text;
   v_valor numeric(12,2);
   v_ini int; v_fim int;
   v_conflito text;
@@ -398,29 +409,44 @@ begin
 
   select * into r  from public.requisicoes  where id = new.requisicao_id;
   select * into t  from public.turnos       where id = r.turno_id;
-  select * into tb from public.trabalhadores where id = new.trabalhador_id;
+  new.nome_trabalhador := nullif(upper(trim(new.nome_trabalhador)), '');
 
-  if not tb.ativo then raise exception 'Trabalhador % está inativo.', tb.nome; end if;
-
-  if not exists (select 1 from public.trabalhador_funcoes
-                 where trabalhador_id = tb.id and funcao_id = new.funcao_id) then
-    raise exception '% não está habilitado nesta função.', tb.nome;
+  if new.trabalhador_id is null then
+    -- Terceirizada por função: empresa informada na linha, sem habilitação nem conflito de turno
+    select * into e from public.empresas where id = new.empresa_id;
+    if e.id is null then raise exception 'Escolha a empresa.'; end if;
+    if not e.ativo then raise exception 'A empresa % está inativa.', e.nome; end if;
+    if not e.por_funcao then
+      raise exception 'A empresa % trabalha com trabalhadores cadastrados; escolha o trabalhador pela lista.', e.nome;
+    end if;
+    v_quem := e.nome;
+  else
+    select * into tb from public.trabalhadores where id = new.trabalhador_id;
+    if not tb.ativo then raise exception 'Trabalhador % está inativo.', tb.nome; end if;
+    if not exists (select 1 from public.trabalhador_funcoes
+                   where trabalhador_id = tb.id and funcao_id = new.funcao_id) then
+      raise exception '% não está habilitado nesta função.', tb.nome;
+    end if;
+    new.empresa_id := tb.empresa_id;
+    new.nome_trabalhador := null;
+    select nome into v_quem from public.empresas where id = tb.empresa_id;
   end if;
 
-  new.empresa_id := tb.empresa_id;
-  new.horas      := t.horas;
+  new.horas := t.horas;
 
   select p.valor into v_valor
     from public.tabela_precos p
-   where p.empresa_id = tb.empresa_id and p.funcao_id = new.funcao_id
+   where p.empresa_id = new.empresa_id and p.funcao_id = new.funcao_id
      and p.turno_id = r.turno_id and p.tipo_dia = r.tipo_dia
      and r.data >= p.vigencia_inicio and (p.vigencia_fim is null or r.data <= p.vigencia_fim);
 
   if v_valor is null then
-    raise exception 'Sem preço cadastrado para a empresa de % nesta função/turno (%).', tb.nome,
+    raise exception 'Sem preço cadastrado para a empresa % nesta função/turno (%).', v_quem,
       case r.tipo_dia when 'DOM_FER' then 'domingo/feriado' else 'dia útil' end;
   end if;
   new.valor_unitario := v_valor;
+
+  if new.trabalhador_id is null then return new; end if;
 
   v_ini := public.fn_inicio_operacional(t.hora_inicio);
   v_fim := v_ini + t.horas;
@@ -593,20 +619,22 @@ select i.id, i.requisicao_id, r.data, r.tipo_dia, r.status,
        r.turno_id, t.codigo as turno, t.periodo, i.horas,
        r.navio_id, n.nome as navio, n.viagem,
        r.armazem_id, a.nome as armazem,
-       i.trabalhador_id, tb.nome as trabalhador, tb.cnpj_mei,
+       i.trabalhador_id, coalesce(tb.nome, i.nome_trabalhador, 'Nome não informado') as trabalhador, tb.cnpj_mei,
        i.funcao_id, f.nome as funcao,
        i.empresa_id, e.nome as empresa,
        r.supervisor_id, u.nome as supervisor,
        case when public.ve_valores() then i.valor_unitario end as valor,
        i.observacao,
        i.fechamento_id,
-       case when r.numero is not null then r.numero_ano || '/' || lpad(r.numero::text, 4, '0') end as numero_fmt
+       case when r.numero is not null then r.numero_ano || '/' || lpad(r.numero::text, 4, '0') end as numero_fmt,
+       i.nome_trabalhador,
+       (i.trabalhador_id is null) as por_funcao
   from public.requisicao_itens i
   join public.requisicoes   r  on r.id  = i.requisicao_id
   join public.turnos        t  on t.id  = r.turno_id
   join public.navios        n  on n.id  = r.navio_id
   join public.armazens      a  on a.id  = r.armazem_id
-  join public.trabalhadores tb on tb.id = i.trabalhador_id
+  left join public.trabalhadores tb on tb.id = i.trabalhador_id
   join public.funcoes       f  on f.id  = i.funcao_id
   join public.empresas      e  on e.id  = i.empresa_id
   left join public.usuarios u  on u.id  = r.supervisor_id
@@ -746,7 +774,7 @@ grant execute on function public.meu_perfil(), public.is_admin(), public.is_ativ
 
 -- O valor do item não é legível direto na tabela: leitura de valores só pelas views
 revoke select on public.requisicao_itens from anon, authenticated;
-grant select (id, requisicao_id, trabalhador_id, funcao_id, empresa_id, horas, observacao, criado_em, fechamento_id)
+grant select (id, requisicao_id, trabalhador_id, funcao_id, empresa_id, horas, observacao, criado_em, fechamento_id, nome_trabalhador)
   on public.requisicao_itens to authenticated;
 revoke insert, delete on public.fechamentos from anon, authenticated;
 revoke all on public.vw_requisicoes, public.vw_itens, public.vw_fechamentos, public.vw_auditoria from anon;

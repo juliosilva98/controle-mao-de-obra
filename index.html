@@ -427,7 +427,23 @@ function DemoDB(){
   const audit = (t, acao, ant, nov) => { const r = nov || ant; S.auditoria.push({id:nid('auditoria'), tabela:t, registro_id:String(r.id ?? r.trabalhador_id ?? r.data), acao, usuario_id:me ? me.id : null, dados_antigos:ant ? clone(ant) : null, dados_novos:nov ? clone(nov) : null, em:new Date().toISOString()}); };
 
   function regraItem(row){
-    const r = get('requisicoes', row.requisicao_id), t = get('turnos', r.turno_id), tb = get('trabalhadores', row.trabalhador_id);
+    const r = get('requisicoes', row.requisicao_id), t = get('turnos', r.turno_id);
+    row.nome_trabalhador = String(row.nome_trabalhador ?? '').trim().toUpperCase() || null;
+    if (row.trabalhador_id == null) {
+      // terceirizada por função: mesma regra do gatilho (sem habilitação nem conflito de turno)
+      row.trabalhador_id = null;
+      const e = get('empresas', row.empresa_id);
+      if (!e) falha('Escolha a empresa.');
+      if (!e.ativo) falha(`A empresa ${e.nome} está inativa.`);
+      if (!e.por_funcao) falha(`A empresa ${e.nome} trabalha com trabalhadores cadastrados; escolha o trabalhador pela lista.`);
+      row.horas = t.horas;
+      const p = S.tabela_precos.find(p => p.empresa_id === e.id && p.funcao_id === row.funcao_id && p.turno_id === r.turno_id && p.tipo_dia === r.tipo_dia && r.data >= p.vigencia_inicio && (!p.vigencia_fim || r.data <= p.vigencia_fim));
+      if (!p) falha(`Sem preço cadastrado para a empresa ${e.nome} nesta função/turno (${r.tipo_dia === 'DOM_FER' ? 'domingo/feriado' : 'dia útil'}).`);
+      row.valor_unitario = p.valor;
+      return row;
+    }
+    row.nome_trabalhador = null;
+    const tb = get('trabalhadores', row.trabalhador_id);
     if (!tb.ativo) falha(`Trabalhador ${tb.nome} está inativo.`);
     if (!S.trabalhador_funcoes.some(x => x.trabalhador_id === tb.id && x.funcao_id === row.funcao_id)) falha(`${tb.nome} não está habilitado nesta função.`);
     if (S.requisicao_itens.some(i => i.requisicao_id === row.requisicao_id && i.trabalhador_id === row.trabalhador_id && i.id !== row.id)) falha(`${tb.nome} já está nesta requisição.`);
@@ -484,9 +500,10 @@ function DemoDB(){
     return S.requisicao_itens.map(i => {
       const r = get('requisicoes', i.requisicao_id), tu = get('turnos', r.turno_id), na = get('navios', r.navio_id), tb = get('trabalhadores', i.trabalhador_id);
       return {id:i.id, requisicao_id:r.id, data:r.data, tipo_dia:r.tipo_dia, status:r.status, turno_id:r.turno_id, turno:tu.codigo, periodo:tu.periodo, horas:i.horas,
-        navio_id:r.navio_id, navio:na.nome, viagem:na.viagem, armazem_id:r.armazem_id, armazem:nome('armazens', r.armazem_id), trabalhador_id:tb.id, trabalhador:tb.nome, cnpj_mei:tb.cnpj_mei,
+        navio_id:r.navio_id, navio:na.nome, viagem:na.viagem, armazem_id:r.armazem_id, armazem:nome('armazens', r.armazem_id), trabalhador_id:tb ? tb.id : null, trabalhador:tb ? tb.nome : (i.nome_trabalhador || 'Nome não informado'), cnpj_mei:tb ? tb.cnpj_mei : null,
         funcao_id:i.funcao_id, funcao:nome('funcoes', i.funcao_id), empresa_id:i.empresa_id, empresa:nome('empresas', i.empresa_id), supervisor_id:r.supervisor_id,
-        supervisor:nome('usuarios', r.supervisor_id), valor:veVal() ? i.valor_unitario : null, observacao:i.observacao, fechamento_id:i.fechamento_id || null, numero_fmt:fmtNumero(r)};
+        supervisor:nome('usuarios', r.supervisor_id), valor:veVal() ? i.valor_unitario : null, observacao:i.observacao, fechamento_id:i.fechamento_id || null, numero_fmt:fmtNumero(r),
+        nome_trabalhador:i.nome_trabalhador || null, por_funcao:i.trabalhador_id == null};
     });
   }
 
@@ -625,7 +642,7 @@ function DemoDB(){
     const ins = (t, r) => { r.id = nid(t); S[t].push(r); return r; };
     SEED_FUNCOES.forEach(n => ins('funcoes', {nome:n, ativo:true}));
     SEED_TURNOS.forEach(([c, d, h, hs, p]) => ins('turnos', {codigo:c, descricao:d, hora_inicio:h, horas:hs, periodo:p, ativo:true}));
-    SEED_EMPRESAS.forEach(([n, epi, l]) => ins('empresas', {nome:n, cnpj:'', contato:'', telefone:'', email:'', fornece_epi:epi, fornece_lanche:l, observacao:'', ativo:true}));
+    SEED_EMPRESAS.forEach(([n, epi, l]) => ins('empresas', {nome:n, cnpj:'', contato:'', telefone:'', email:'', fornece_epi:epi, fornece_lanche:l, por_funcao:/TESTE [CD]$/.test(n), observacao:'', ativo:true}));
     ['ARMAZÉM 1','ARMAZÉM 2','ARMAZÉM 3','ARMAZÉM 4','PÁTIO'].forEach(n => ins('armazens', {nome:n, ativo:true}));
     SEED_FERIADOS.forEach(([d, n]) => S.feriados.push({data:d, descricao:n}));
     const id = (t, campo, v) => S[t].find(x => x[campo] === v).id;
@@ -1198,8 +1215,8 @@ async function vDetalhe(id){
     <section class="painel">
       <div class="cab-p"><h2>Trabalhadores</h2><div class="totais"><span><b>${itens.length}</b> pessoas</span><span><b>${hh}</b> HH</span>${veValores() ? `<span>Total <b>${brl(total)}</b></span>` : ''}</div></div>
       ${porFuncao.length ? porFuncao.map(([fu, l]) => `<div class="grupo-func"><h3>${esc(fu.nome)} · ${l.length}</h3><div class="lista-trab">${l.map(i => `
-        <div class="trab"><div><div class="n">${esc(i.trabalhador)}</div><div class="d">${esc(i.empresa)} · ${i.horas}h</div></div>
-        <div class="lado">${veValores() ? `<span class="mono">${brl(i.valor)}</span>` : ''}${editavel ? `<button class="btn peq perigo" type="button" data-rem="${i.id}" aria-label="Remover ${esc(i.trabalhador)}">Remover</button>` : ''}</div></div>`).join('')}</div></div>`).join('')
+        <div class="trab"><div><div class="n">${i.por_funcao && !i.nome_trabalhador ? '<span class="muted" style="font-weight:400">Nome não informado</span>' : esc(i.trabalhador)}</div><div class="d">${esc(i.empresa)} · ${i.horas}h${i.por_funcao ? ' · por função' : ''}</div></div>
+        <div class="lado">${veValores() ? `<span class="mono">${brl(i.valor)}</span>` : ''}${editavel && i.por_funcao ? `<button class="btn peq" type="button" data-nome="${i.id}">${i.nome_trabalhador ? 'Alterar nome' : 'Informar nome'}</button>` : ''}${editavel ? `<button class="btn peq perigo" type="button" data-rem="${i.id}" aria-label="Remover ${esc(i.trabalhador)}">Remover</button>` : ''}</div></div>`).join('')}</div></div>`).join('')
         : '<div class="vazio">Nenhum trabalhador nesta requisição ainda.</div>'}
     </section>
     ${editavel ? '<section class="painel" id="d-add"></section>' : ''}`);
@@ -1216,6 +1233,10 @@ async function vDetalhe(id){
   };
   if ($('#d-pdf')) $('#d-pdf').onclick = () => espelho(false);
   if ($('#d-zap')) $('#d-zap').onclick = () => espelho(true);
+  $$('[data-nome]').forEach(b => b.onclick = () => { const it = itens.find(i => i.id === +b.dataset.nome);
+    modal('Nome do trabalhador', `<p class="muted" style="margin:0">${esc(it.empresa)} · ${esc(it.funcao)}. Opcional: fica só nesta requisição.</p>
+      <div class="campo"><label for="n-nome">Nome</label><input id="n-nome" value="${esc(it.nome_trabalhador || '')}" autocomplete="off"></div>`,
+      {okTxt:'Salvar', onOk: async fm => { await DB.update('requisicao_itens', {id:it.id}, {nome_trabalhador:$('#n-nome', fm).value.trim() || null}); toast('Nome atualizado.'); vDetalhe(id); }}); });
   $$('[data-rem]').forEach(b => b.onclick = async () => { try { await DB.remove('requisicao_itens', {id:+b.dataset.rem}); toast('Trabalhador removido.'); vDetalhe(id); } catch (e) { toast(e.message, 1); } });
   if ($('#d-aprovar')) $('#d-aprovar').onclick = () => confirmar('Aprovar requisição', `${reqNum(id)} com ${itens.length} trabalhadores, total ${brl(total)}. Após aprovar, o supervisor não consegue mais alterar.`, 'Aprovar', async () => { await DB.update('requisicoes', {id}, {status:'APROVADA'}); toast('Requisição aprovada.'); vDetalhe(id); });
   if ($('#d-reabrir')) $('#d-reabrir').onclick = () => confirmar('Reabrir requisição', 'A requisição volta para "Aberta" e poderá ser alterada pelo supervisor.', 'Reabrir', async () => { await DB.update('requisicoes', {id}, {status:'ABERTA', motivo_cancelamento:null}); toast('Requisição reaberta.'); vDetalhe(id); });
@@ -1232,7 +1253,9 @@ async function vDetalhe(id){
       {okTxt:'Duplicar', onOk: async fm => {
         const nova = await DB.insert('requisicoes', {...lerCabecalho(fm), supervisor_id:ME.id});
         const falhas = [];
-        for (const i of itens) { try { await DB.insert('requisicao_itens', {requisicao_id:nova.id, trabalhador_id:i.trabalhador_id, funcao_id:i.funcao_id}); } catch (e) { falhas.push(e.message); } }
+        for (const i of itens) { try { await DB.insert('requisicao_itens', i.por_funcao
+            ? {requisicao_id:nova.id, trabalhador_id:null, empresa_id:i.empresa_id, funcao_id:i.funcao_id, nome_trabalhador:i.nome_trabalhador || null}
+            : {requisicao_id:nova.id, trabalhador_id:i.trabalhador_id, funcao_id:i.funcao_id}); } catch (e) { falhas.push(e.message); } }
         location.hash = 'req-' + nova.id;
         if (falhas.length) modal(`${falhas.length} trabalhadores não foram copiados`, `<ul style="margin:0;padding-left:18px">${falhas.map(f => `<li>${esc(f)}</li>`).join('')}</ul>`);
         else toast(`${reqNum(nova.id)} criada com ${itens.length} trabalhadores.`);
@@ -1251,7 +1274,7 @@ async function painelAdicionar(r, itens){
   const box = $('#d-add');
   const desenhar = () => {
     const termo = st.busca.toLowerCase();
-    const lista = C.trabalhadores.filter(t => t.ativo && funcoesDe(t.id).includes(st.funcao) && !nesta.has(t.id) && (!termo || t.nome.toLowerCase().includes(termo) || byId('empresas', t.empresa_id).nome.toLowerCase().includes(termo)));
+    const lista = C.trabalhadores.filter(t => t.ativo && !byId('empresas', t.empresa_id).por_funcao && funcoesDe(t.id).includes(st.funcao) && !nesta.has(t.id) && (!termo || t.nome.toLowerCase().includes(termo) || byId('empresas', t.empresa_id).nome.toLowerCase().includes(termo)));
     $('#a-lista', box).innerHTML = lista.length ? lista.map(t => {
       const conf = doDia.find(i => i.trabalhador_id === t.id && sobrepoe(turnoR, byId('turnos', i.turno_id)));
       const p = veValores() ? precoVigente(t.empresa_id, st.funcao, r.turno_id, r.tipo_dia, r.data) : null;
@@ -1266,14 +1289,45 @@ async function painelAdicionar(r, itens){
       catch (e) { toast(e.message, 1); b.disabled = false; }
     });
   };
+  // Terceirizadas "por função": empresa + função + quantidade; nome de cada pessoa é opcional
+  const terc = C.empresas.filter(e => e.ativo && e.por_funcao).sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
+  if (!terc.some(e => e.id === st.emp)) st.emp = terc[0] && terc[0].id;
+  st.qtd = st.qtd || 1;
+  const nomeFuncao = () => (byId('funcoes', st.funcao) || {}).nome || '';
+  const desenharTerc = () => {
+    const el = $('#t-box', box); if (!el) return;
+    const p = veValores() && st.emp ? precoVigente(st.emp, st.funcao, r.turno_id, r.tipo_dia, r.data) : null;
+    const semPreco = veValores() && st.emp && !p;
+    const nomes = $$('[data-tn]', el).map(i => i.value);
+    el.innerHTML = `
+      <div class="filtros">
+        <div class="campo"><label for="t-emp">Empresa</label><select id="t-emp">${terc.map(e => `<option value="${e.id}" ${e.id === st.emp ? 'selected' : ''}>${esc(e.nome)}</option>`).join('')}</select></div>
+        <div class="campo" style="max-width:120px;flex:0 1 120px"><label for="t-qtd">Quantidade</label><input id="t-qtd" type="number" min="1" max="30" value="${st.qtd}" inputmode="numeric"></div>
+        <div class="campo" style="flex:0 0 auto;min-width:0"><span class="muted" style="font-size:.85rem;padding-bottom:10px">${esc(nomeFuncao())}${p ? ` · <span class="mono">${brl(p.valor)}</span> cada` : ''}</span></div>
+      </div>
+      ${semPreco ? '<div class="aviso">Esta empresa não tem preço para esta função/turno.</div>' : ''}
+      <div class="grade" style="grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:8px">${Array.from({length:st.qtd}, (_, k) => `
+        <div class="campo"><label for="t-n${k}">Nome ${k + 1} (opcional)</label><input id="t-n${k}" data-tn value="${esc(nomes[k] || '')}" autocomplete="off"></div>`).join('')}</div>
+      <div><button class="btn primario" type="button" id="t-add" ${semPreco || !st.emp ? 'disabled' : ''}>Adicionar ${st.qtd} ${esc(nomeFuncao().toLowerCase())}${st.qtd > 1 ? ' (cada um é uma diária)' : ''}</button></div>`;
+    $('#t-emp', el).onchange = e => { st.emp = +e.target.value; desenharTerc(); };
+    $('#t-qtd', el).onchange = e => { st.qtd = Math.min(30, Math.max(1, parseInt(e.target.value, 10) || 1)); desenharTerc(); };
+    $('#t-add', el).onclick = async ev => {
+      ev.target.disabled = true;
+      const linhas = $$('[data-tn]', el).map(i => ({requisicao_id:r.id, trabalhador_id:null, empresa_id:st.emp, funcao_id:st.funcao, nome_trabalhador:i.value.trim() || null}));
+      try { await DB.insert('requisicao_itens', linhas); st.qtd = 1; toast(`${linhas.length} ${linhas.length > 1 ? 'diárias adicionadas' : 'diária adicionada'}.`); vDetalhe(r.id); }
+      catch (e) { toast(e.message, 1); ev.target.disabled = false; }
+    };
+  };
   box.innerHTML = `<div class="cab-p"><h2>Adicionar trabalhadores</h2><span class="muted" style="font-size:.85rem">Turno <span class="turno">${esc(r.turno)}</span> · ${fdata(r.data)}</span></div>
     <div style="display:grid;gap:12px">
       <div class="chips" role="group" aria-label="Função">${funcoes.map(f => `<button type="button" class="chip" data-f="${f.id}" aria-pressed="${f.id === st.funcao}">${esc(f.nome)}</button>`).join('')}</div>
+      ${terc.length ? `<div class="nota" style="display:grid;gap:10px;padding:14px"><h3 style="font-size:.95rem">Terceirizadas por função</h3><div id="t-box" style="display:grid;gap:10px"></div></div>
+      <h3 style="font-size:.95rem;margin-top:4px">Trabalhadores cadastrados</h3>` : ''}
       <div class="campo"><label for="a-busca">Buscar por nome ou empresa</label><input id="a-busca" type="search" value="${esc(st.busca)}" placeholder="Digite para filtrar"></div>
       <div class="lista-trab" id="a-lista"></div></div>`;
-  $$('[data-f]', box).forEach(b => b.onclick = () => { st.funcao = +b.dataset.f; $$('[data-f]', box).forEach(x => x.setAttribute('aria-pressed', x === b)); desenhar(); });
+  $$('[data-f]', box).forEach(b => b.onclick = () => { st.funcao = +b.dataset.f; $$('[data-f]', box).forEach(x => x.setAttribute('aria-pressed', x === b)); desenhar(); desenharTerc(); });
   $('#a-busca', box).oninput = e => { st.busca = e.target.value; desenhar(); };
-  desenhar();
+  desenhar(); desenharTerc();
 }
 
 /* ------------------------------ Exportação ------------------------------ */
@@ -1293,8 +1347,8 @@ function exportarCSV(itens, nome){
 /* ------------------------- Cadastros genéricos ------------------------- */
 const CRUD = {
   empresas:{titulo:'Empresas fornecedoras', sub:'Quem fornece a mão de obra e o que está incluso no preço', tabela:'empresas',
-    campos:[{k:'nome',l:'Nome',req:1,upper:1},{k:'cnpj',l:'CNPJ'},{k:'contato',l:'Contato'},{k:'telefone',l:'Telefone'},{k:'email',l:'E-mail',type:'email'},{k:'fornece_epi',l:'Fornece EPI',type:'bool'},{k:'fornece_lanche',l:'Fornece lanche',type:'bool'},{k:'observacao',l:'Observação',type:'area'},{k:'ativo',l:'Ativa',type:'bool',def:true}],
-    cols:[['nome','Empresa'],['cnpj','CNPJ'],['contato','Contato'],['telefone','Telefone'],['fornece_epi','EPI','sn'],['fornece_lanche','Lanche','sn'],['ativo','Situação','ativo']]},
+    campos:[{k:'nome',l:'Nome',req:1,upper:1},{k:'cnpj',l:'CNPJ'},{k:'contato',l:'Contato'},{k:'telefone',l:'Telefone'},{k:'email',l:'E-mail',type:'email'},{k:'fornece_epi',l:'Fornece EPI',type:'bool'},{k:'fornece_lanche',l:'Fornece lanche',type:'bool'},{k:'por_funcao',l:'Requisição por função (terceirizada: sem cadastro de cada trabalhador)',type:'bool'},{k:'observacao',l:'Observação',type:'area'},{k:'ativo',l:'Ativa',type:'bool',def:true}],
+    cols:[['nome','Empresa'],['cnpj','CNPJ'],['contato','Contato'],['telefone','Telefone'],['fornece_epi','EPI','sn'],['fornece_lanche','Lanche','sn'],['por_funcao','Por função','sn'],['ativo','Situação','ativo']]},
   navios:{titulo:'Navios', sub:'Toda requisição é vinculada a um navio. Cadastro: administrador e financeiro.', tabela:'navios', finIns:1,
     campos:[{k:'nome',l:'Nome do navio',req:1,upper:1,ph:'Ex.: NAVIO TESTE 1'},{k:'viagem',l:'Viagem',ph:'Ex.: 026N'},{k:'eta',l:'ETA',type:'date'},{k:'observacao',l:'Observação',type:'area'},{k:'ativo',l:'Ativo (aparece para seleção)',type:'bool',def:true}],
     cols:[['nome','Navio'],['viagem','Viagem'],['eta','ETA','data'],['observacao','Observação'],['ativo','Situação','ativo']]},
