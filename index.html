@@ -356,7 +356,7 @@ const dow = s => new Date(s + 'T12:00:00').getDay();
 const NUMS = {};
 const fmtNumero = r => r && (r.numero_fmt || (r.numero && r.numero_ano ? r.numero_ano + '/' + String(r.numero).padStart(4, '0') : null));
 const regNums = rows => { for (const r of rows) { const n = fmtNumero(r); if (n) NUMS['requisicao_id' in r ? r.requisicao_id : r.id] = n; } };
-const reqNum = id => NUMS[id] || 'REQ-' + String(id).padStart(5, '0');
+const reqNum = id => NUMS[id] || 'Rascunho';
 // Horário digitado na pessoa (ex.: 07h às 17h · 10h); sem horário próprio, só as horas do turno
 const horarioTxt = i => i.hora_inicio != null ? `${pad(i.hora_inicio)}h às ${pad(i.hora_fim)}h · ${i.horas}h` : `${i.horas}h`;
 const TIPO_DIA = {UTIL:'Dia útil', DOM_FER:'Domingo/feriado'};
@@ -435,10 +435,11 @@ function DemoDB(){
   const falha = m => { throw new Error(m); };
   const get = (t, id) => S[t].find(x => x.id === id);
   const tipoDia = d => dow(d) === 0 || S.feriados.some(f => f.data === d) ? 'DOM_FER' : 'UTIL';
-  // mesma regra do gatilho: sequencial por ano de criação, nunca muda
+  // mesma regra do gatilho: sequencial por ano, gerado só na conclusão (rascunho fica sem número), nunca muda
+  const proxNumero = r => { S.numeracao = S.numeracao || {}; const ano = new Date().getFullYear(); r.numero_ano = ano; r.numero = S.numeracao[ano] = (S.numeracao[ano] || 0) + 1; };
   const numerar = () => { S.numeracao = S.numeracao || {};
     for (const r of [...S.requisicoes].sort((a, b) => String(a.criado_em).localeCompare(String(b.criado_em)) || a.id - b.id))
-      if (!r.numero) { const ano = +String(r.criado_em || new Date().toISOString()).slice(0, 4); r.numero_ano = ano; r.numero = S.numeracao[ano] = (S.numeracao[ano] || 0) + 1; } };
+      if (!r.numero && (r.concluida_em || r.concluida_em === undefined)) { if (r.concluida_em === undefined) r.concluida_em = r.criado_em; const ano = +String(r.criado_em || new Date().toISOString()).slice(0, 4); r.numero_ano = ano; r.numero = S.numeracao[ano] = (S.numeracao[ano] || 0) + 1; } };
   const audit = (t, acao, ant, nov) => { const r = nov || ant; S.auditoria.push({id:nid('auditoria'), tabela:t, registro_id:String(r.id ?? r.trabalhador_id ?? r.data), acao, usuario_id:me ? me.id : null, dados_antigos:ant ? clone(ant) : null, dados_novos:nov ? clone(nov) : null, em:new Date().toISOString()}); };
 
   function regraItem(row){
@@ -579,7 +580,7 @@ function DemoDB(){
       const lista = [].concat(dados), saida = [];
       for (let row of lista) {
         row = clone(row);
-        if (t === 'requisicoes') { row.supervisor_id = me.id; row.status = 'ABERTA'; row.tipo_dia = tipoDia(row.data); row.criado_em = new Date().toISOString(); row.aprovado_por = null; row.aprovado_em = null; }
+        if (t === 'requisicoes') { row.supervisor_id = me.id; row.status = 'ABERTA'; row.tipo_dia = tipoDia(row.data); row.criado_em = new Date().toISOString(); row.aprovado_por = null; row.aprovado_em = null; row.numero = null; row.numero_ano = null; row.concluida_em = null; }
         if (!pode(t, 'insert', row)) falha('Você não tem permissão para esta operação.');
         if (t === 'requisicao_itens') regraItem(row);
         if (t === 'trabalhadores' || t === 'empresas' || t === 'navios' || t === 'armazens' || t === 'funcoes' || t === 'turnos') row.ativo = row.ativo ?? true;
@@ -608,6 +609,16 @@ function DemoDB(){
               nov.aprovado_por = me.id; nov.aprovado_em = new Date().toISOString();
             } else if (nov.status !== 'APROVADA') { nov.aprovado_por = null; nov.aprovado_em = null; }
             if (nov.status === 'CANCELADA' && !String(nov.motivo_cancelamento || '').trim()) falha('Informe o motivo do cancelamento.');
+            // número: mesma regra do gatilho (gerado na conclusão ou aprovação; nunca muda)
+            if (old.numero) { nov.numero = old.numero; nov.numero_ano = old.numero_ano; nov.concluida_em = old.concluida_em || new Date().toISOString(); }
+            else {
+              nov.numero = null; nov.numero_ano = null;
+              if ((nov.concluida_em && !old.concluida_em) || (nov.status === 'APROVADA' && old.status !== 'APROVADA')) {
+                if (nov.status === 'CANCELADA') falha('Requisição cancelada não pode ser concluída.');
+                if (!S.requisicao_itens.some(i => i.requisicao_id === old.id)) falha('Adicione pelo menos uma pessoa antes de concluir a requisição.');
+                nov.concluida_em = new Date().toISOString(); proxNumero(nov);
+              } else nov.concluida_em = old.concluida_em || null;
+            }
           }
           if (t === 'requisicao_itens') regraItem(nov);
           if (t === 'usuarios' && !adm()) falha('Você não tem permissão para alterar este registro.');
@@ -719,8 +730,10 @@ function DemoDB(){
       [dia(2),'07x19','NAVIO TESTE 3','ARMAZÉM 2',[[1,'OPERADOR DE EMPILHADEIRA'],[11,'CONFERENTE'],[12,'AUXILIAR'],[2,'AUXILIAR'],[13,'AGENDAMENTO'],[14,'AGENDAMENTO']],'u2','APROVADA'],
       [dia(1),'07x13','NAVIO TESTE 3','ARMAZÉM 2',[[4,'OPERADOR DE EMPILHADEIRA'],[3,'CONFERENTE'],[5,'AUXILIAR']],'u2','ABERTA'],
       [hoje(),'13x19','NAVIO TESTE 2','ARMAZÉM 3',[[1,'AUXILIAR'],[9,'AUXILIAR']],'u2','ABERTA']];
-    for (const [d, tu, na, ar, its, sup, st] of exemplos) {
-      const r = ins('requisicoes', {data:d, turno_id:T(tu), navio_id:N(na), armazem_id:A(ar), tipo_dia:tipoDia(d), supervisor_id:sup, status:'ABERTA', observacao:'', motivo_cancelamento:null, aprovado_por:null, aprovado_em:null, criado_em:new Date().toISOString()});
+    for (const [k, [d, tu, na, ar, its, sup, st]] of exemplos.entries()) {
+      // o último exemplo fica como rascunho (sem número), os demais já concluídos
+      const agora = new Date().toISOString();
+      const r = ins('requisicoes', {data:d, turno_id:T(tu), navio_id:N(na), armazem_id:A(ar), tipo_dia:tipoDia(d), supervisor_id:sup, status:'ABERTA', observacao:'', motivo_cancelamento:null, aprovado_por:null, aprovado_em:null, criado_em:agora, concluida_em:k < exemplos.length - 1 ? agora : null});
       for (const [tb, fn] of its) { try { const it = regraItem({requisicao_id:r.id, trabalhador_id:tb, funcao_id:F(fn), observacao:''}); ins('requisicao_itens', it); } catch (e) {} }
       if (st === 'APROVADA' && S.requisicao_itens.some(i => i.requisicao_id === r.id)) { r.status = 'APROVADA'; r.aprovado_por = 'u1'; r.aprovado_em = new Date().toISOString(); }
     }
@@ -1172,7 +1185,7 @@ async function vNova(){
   const raiz = $('#f-nova'); ligarCabecalho(raiz);
   raiz.addEventListener('submit', async e => {
     e.preventDefault(); const er = $('#n-erro'); er.hidden = true;
-    try { const r = await DB.insert('requisicoes', {...lerCabecalho(raiz), supervisor_id:ME.id}); toast(reqNum(r.id) + ' criada.'); location.hash = 'req-' + r.id; }
+    try { const r = await DB.insert('requisicoes', {...lerCabecalho(raiz), supervisor_id:ME.id}); toast('Rascunho criado. Adicione as pessoas e clique em Concluir requisição para gerar o número.'); location.hash = 'req-' + r.id; }
     catch (x) { er.textContent = x.message; er.hidden = false; }
   });
 }
@@ -1269,19 +1282,19 @@ async function vDetalhe(id){
   const fer = C.feriados.find(x => x.data === r.data);
   const acoes = [
     '<a class="btn" href="#requisicoes">Voltar</a>',
-    editavel && itens.length ? '<button class="btn concluir" id="d-concluir" type="button">✓ Concluir requisição</button>' : '',
+    editavel && itens.length && !r.numero ? '<button class="btn concluir" id="d-concluir" type="button">✓ Concluir requisição</button>' : '',
     adm && r.status === 'ABERTA' ? '<button class="btn primario" id="d-aprovar" type="button">Aprovar</button>' : '',
     editavel ? '<button class="btn" id="d-editar" type="button">Editar dados</button>' : '',
     podeRequisitar() ? '<button class="btn" id="d-dup" type="button">Duplicar</button>' : '',
     adm && r.status === 'ABERTA' && itens.length ? '<button class="btn" id="d-repr" type="button">Reprocessar preços</button>' : '',
     adm && r.status !== 'ABERTA' && !fechada ? '<button class="btn" id="d-reabrir" type="button">Reabrir</button>' : '',
     editavel ? '<button class="btn perigo" id="d-cancel" type="button">Cancelar</button>' : '',
-    itens.length ? '<button class="btn" id="d-pdf" type="button">Espelho PDF</button>' : '',
-    itens.length && podeCompartilharArquivo() ? '<button class="btn" id="d-zap" type="button">Enviar (WhatsApp)</button>' : ''].join('');
+    itens.length && r.numero ? '<button class="btn" id="d-pdf" type="button">Espelho PDF</button>' : '',
+    itens.length && r.numero && podeCompartilharArquivo() ? '<button class="btn" id="d-zap" type="button">Enviar (WhatsApp)</button>' : ''].join('');
   const porFuncao = C.funcoes.map(fu => [fu, itens.filter(i => i.funcao_id === fu.id)]).filter(([, l]) => l.length);
   pagina(`<span class="reqnum">${reqNum(r.id)}</span>`, `${esc(r.navio)}${r.viagem ? ' · viagem ' + esc(r.viagem) : ''} · ${esc(r.armazem)}`, acoes, `
     <section class="painel"><dl class="ficha" style="margin:0">
-      <div><dt>Situação</dt><dd><span class="pill ${r.status}">${STATUS[r.status]}</span></dd></div>
+      <div><dt>Situação</dt><dd><span class="pill ${r.status}">${STATUS[r.status]}</span>${!r.numero && r.status !== 'CANCELADA' ? ' <span class="muted" style="font-size:.85rem">rascunho · o número é gerado ao concluir</span>' : ''}</dd></div>
       <div><dt>Data</dt><dd>${fdata(r.data)} · ${DIAS[dow(r.data)]}</dd></div>
       <div><dt>Turno</dt><dd><span class="turno">${esc(r.turno)}</span> ${r.horas_turno}h ${r.periodo === 'NOTURNO' ? 'noturno' : 'diurno'}</dd></div>
       <div><dt>Tipo de dia</dt><dd><span class="tag ${r.tipo_dia}">${TIPO_DIA[r.tipo_dia]}</span>${fer ? ` <span class="muted" style="font-size:.85rem">${esc(fer.descricao)}</span>` : ''}</dd></div>
@@ -1311,7 +1324,12 @@ async function vDetalhe(id){
         toast('PDF baixado. No WhatsApp: clipe (anexar) → Documento → escolha o arquivo.'); }
     } catch (e) { if (e.name !== 'AbortError') toast('Não foi possível gerar o espelho: ' + e.message, 1); }
   };
-  if ($('#d-concluir')) $('#d-concluir').onclick = () => { toast(`${reqNum(r.id)} concluída com ${itens.length} ${itens.length === 1 ? 'pessoa' : 'pessoas'}.`); location.hash = 'nova'; };
+  if ($('#d-concluir')) $('#d-concluir').onclick = async () => {
+    const b = $('#d-concluir'); b.disabled = true;
+    try { await DB.update('requisicoes', {id}, {concluida_em:new Date().toISOString()});
+      await DB.list('vw_requisicoes', {eq:{id}});   // traz o número gerado pelo banco
+      toast(`Requisição ${reqNum(id)} concluída com ${itens.length} ${itens.length === 1 ? 'pessoa' : 'pessoas'}.`); location.hash = 'nova';
+    } catch (e) { b.disabled = false; toast(e.message, 1); } };
   if ($('#d-pdf')) $('#d-pdf').onclick = () => espelho(false);
   if ($('#d-zap')) $('#d-zap').onclick = () => espelho(true);
   $$('[data-nome]').forEach(b => b.onclick = () => { const it = itens.find(i => i.id === +b.dataset.nome);
@@ -1339,7 +1357,7 @@ async function vDetalhe(id){
             : {requisicao_id:nova.id, trabalhador_id:i.trabalhador_id, funcao_id:i.funcao_id, hora_inicio:i.hora_inicio ?? null, hora_fim:i.hora_fim ?? null}); } catch (e) { falhas.push(e.message); } }
         location.hash = 'req-' + nova.id;
         if (falhas.length) modal(`${falhas.length} trabalhadores não foram copiados`, `<ul style="margin:0;padding-left:18px">${falhas.map(f => `<li>${esc(f)}</li>`).join('')}</ul>`);
-        else toast(`${reqNum(nova.id)} criada com ${itens.length} trabalhadores.`);
+        else toast(`Rascunho criado com ${itens.length} trabalhadores. Confira e clique em Concluir requisição.`);
       }});
     ligarCabecalho(m.el);
   };

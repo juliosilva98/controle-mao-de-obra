@@ -200,6 +200,9 @@ create table if not exists public.requisicoes (
 alter table public.requisicoes add column if not exists numero_ano int;
 alter table public.requisicoes add column if not exists numero     int;
 create unique index if not exists ux_req_numero on public.requisicoes(numero_ano, numero);
+-- O número só é gerado quando a requisição é concluída (ou aprovada); antes disso é rascunho
+alter table public.requisicoes add column if not exists concluida_em timestamptz;
+update public.requisicoes set concluida_em = criado_em where numero is not null and concluida_em is null;
 create table if not exists public.requisicao_numeracao (
   ano     int primary key,
   ultimo  int not null default 0
@@ -352,17 +355,10 @@ begin
   if tg_op = 'INSERT' then
     new.status := 'ABERTA';
     new.aprovado_por := null; new.aprovado_em := null;
-    -- sequencial do ano (não pula número; não pode ser digitado)
-    new.numero_ano := extract(year from (now() at time zone 'America/Sao_Paulo'))::int;
-    insert into public.requisicao_numeracao as n (ano, ultimo) values (new.numero_ano, 1)
-      on conflict (ano) do update set ultimo = n.ultimo + 1
-      returning n.ultimo into new.numero;
+    -- nasce como rascunho: o número só vem ao concluir
+    new.numero_ano := null; new.numero := null; new.concluida_em := null;
     return new;
   end if;
-
-  -- o número nunca muda depois de gravado
-  new.numero_ano := coalesce(old.numero_ano, new.numero_ano);
-  new.numero     := coalesce(old.numero, new.numero);
 
   if (new.status, new.data, new.turno_id, new.navio_id, new.armazem_id)
        is distinct from (old.status, old.data, old.turno_id, old.navio_id, old.armazem_id)
@@ -383,6 +379,28 @@ begin
   if new.status = 'CANCELADA' and coalesce(trim(new.motivo_cancelamento),'') = '' then
     raise exception 'Informe o motivo do cancelamento.';
   end if;
+
+  -- Número: sequencial do ano, gerado na conclusão (ou na aprovação); não pode ser digitado e nunca muda
+  if old.numero is not null then
+    new.numero_ano := old.numero_ano; new.numero := old.numero;
+    new.concluida_em := coalesce(old.concluida_em, now());
+  else
+    new.numero_ano := null; new.numero := null;
+    if (new.concluida_em is not null and old.concluida_em is null)
+       or (new.status = 'APROVADA' and old.status <> 'APROVADA') then
+      if new.status = 'CANCELADA' then raise exception 'Requisição cancelada não pode ser concluída.'; end if;
+      if not exists (select 1 from public.requisicao_itens i where i.requisicao_id = new.id) then
+        raise exception 'Adicione pelo menos uma pessoa antes de concluir a requisição.';
+      end if;
+      new.concluida_em := now();
+      new.numero_ano := extract(year from (now() at time zone 'America/Sao_Paulo'))::int;
+      insert into public.requisicao_numeracao as n (ano, ultimo) values (new.numero_ano, 1)
+        on conflict (ano) do update set ultimo = n.ultimo + 1
+        returning n.ultimo into new.numero;
+    else
+      new.concluida_em := old.concluida_em;
+    end if;
+  end if;
   return new;
 end $$;
 
@@ -390,11 +408,11 @@ drop trigger if exists trg_requisicao_antes on public.requisicoes;
 create trigger trg_requisicao_antes before insert or update on public.requisicoes
   for each row execute function public.fn_requisicao_antes();
 
--- Numera requisições antigas que ainda não têm número (na ordem de criação)
+-- Numera requisições concluídas que ainda não têm número (na ordem de criação); rascunhos ficam sem número
 do $$
 declare r record; v_ano int; v_num int;
 begin
-  for r in select id, criado_em from public.requisicoes where numero is null order by criado_em, id loop
+  for r in select id, criado_em from public.requisicoes where numero is null and concluida_em is not null order by criado_em, id loop
     v_ano := extract(year from (r.criado_em at time zone 'America/Sao_Paulo'))::int;
     insert into public.requisicao_numeracao as n (ano, ultimo) values (v_ano, 1)
       on conflict (ano) do update set ultimo = n.ultimo + 1
@@ -683,7 +701,8 @@ select r.id, r.data, r.tipo_dia, r.status, r.observacao, r.motivo_cancelamento,
        end as valor_total,
        exists (select 1 from public.requisicao_itens i where i.requisicao_id = r.id and i.fechamento_id is not null) as em_fechamento,
        r.numero_ano, r.numero,
-       case when r.numero is not null then r.numero_ano || '/' || lpad(r.numero::text, 4, '0') end as numero_fmt
+       case when r.numero is not null then r.numero_ano || '/' || lpad(r.numero::text, 4, '0') end as numero_fmt,
+       r.concluida_em
   from public.requisicoes r
   join public.turnos   t on t.id = r.turno_id
   join public.navios   n on n.id = r.navio_id
