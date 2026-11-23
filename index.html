@@ -357,7 +357,7 @@ const horarioTxt = i => i.hora_inicio != null ? `${pad(i.hora_inicio)}h às ${pa
 const TIPO_DIA = {UTIL:'Dia útil', DOM_FER:'Domingo/feriado'};
 const STATUS = {ABERTA:'Aberta', APROVADA:'Aprovada', CANCELADA:'Cancelada'};
 const ST_FECH = {EM_CONFERENCIA:'Em conferência', CONFERIDO:'Conferido', PAGO:'Pago'};
-const PERFIS = {ADMIN:'Administrador', SUPERVISOR:'Supervisor', FINANCEIRO:'Financeiro'};
+const PERFIS = {ADMIN:'Administrador', SUPERVISOR:'Supervisor', FINANCEIRO:'Financeiro', RH:'Recursos Humanos'};
 const fecNum = id => 'FEC-' + String(id).padStart(4, '0');
 const inicioOp = h => (h - 7 + 24) % 24;   // dia operacional começa às 07h
 const sobrepoe = (t1, t2) => { const a = inicioOp(t1.hora_inicio), b = inicioOp(t2.hora_inicio); return a < b + t2.horas && b < a + t1.horas; };
@@ -487,6 +487,7 @@ function DemoDB(){
   function pode(t, op, row){
     if (!me || !me.ativo) return false;
     if (adm()) return true;
+    if (t === 'jornadas') return me.perfil === 'RH';
     if (t === 'fechamentos') return veVal() && op === 'update';
     if (t === 'navios') return op === 'insert' && me.perfil === 'FINANCEIRO';
     if (!podeReq()) return false;
@@ -559,6 +560,7 @@ function DemoDB(){
       let rows;
       if (t.startsWith('vw_')) rows = visao(t);
       else if (t === 'tabela_precos' || t === 'auditoria' || t === 'fechamentos') rows = veVal() ? clone(S[t]) : [];
+      else if (t === 'jornadas') rows = ['ADMIN','RH'].includes(me.perfil) ? clone(S.jornadas || []) : [];
       else if (t === 'usuarios') rows = clone(S.usuarios.filter(u => adm() || u.id === me.id)).map(u => (delete u.senha, u));
       else rows = clone(S[t]);
       return filtrar(rows, o);
@@ -571,7 +573,8 @@ function DemoDB(){
         if (!pode(t, 'insert', row)) falha('Você não tem permissão para esta operação.');
         if (t === 'requisicao_itens') regraItem(row);
         if (t === 'trabalhadores' || t === 'empresas' || t === 'navios' || t === 'armazens' || t === 'funcoes' || t === 'turnos') row.ativo = row.ativo ?? true;
-        if (t !== 'feriados' && t !== 'trabalhador_funcoes') row.id = nid(t);
+        if (t !== 'feriados' && t !== 'trabalhador_funcoes' && t !== 'jornadas') row.id = nid(t);
+        if (t === 'jornadas' && (S.jornadas = S.jornadas || []).some(j => j.trabalhador_id === row.trabalhador_id)) falha('Já existe jornada para este funcionário.');
         unico(t, row);
         S[t].push(row); if (t === 'requisicoes') numerar(); audit(t, 'INSERT', null, row); saida.push(clone(row));
       }
@@ -664,13 +667,14 @@ function DemoDB(){
     resetar(){ store.del(KEY); S = null; iniciar(); }
   };
 
+  const USU_RH = () => ({id:'u4', nome:'RH (exemplo)', email:'rh@demo', senha:'rh123', perfil:'RH', ativo:true, criado_em:new Date().toISOString()});
   function iniciar(){
-    if (S && S.v === 2) return;
-    S = {v:2, seq:{}, usuarios:[], empresas:[], funcoes:[], turnos:[], armazens:[], navios:[], feriados:[], trabalhadores:[], trabalhador_funcoes:[], tabela_precos:[], requisicoes:[], requisicao_itens:[], fechamentos:[], auditoria:[]};
+    if (S && S.v === 2) { S.jornadas = S.jornadas || []; if (!S.usuarios.some(u => u.perfil === 'RH')) S.usuarios.push(USU_RH()); return; }
+    S = {v:2, seq:{}, usuarios:[], empresas:[], funcoes:[], turnos:[], armazens:[], navios:[], feriados:[], trabalhadores:[], trabalhador_funcoes:[], tabela_precos:[], requisicoes:[], requisicao_itens:[], fechamentos:[], auditoria:[], jornadas:[]};
     S.usuarios.push({id:'u1', nome:'Administrador (exemplo)', email:'admin@demo', senha:'admin123', perfil:'ADMIN', ativo:true, criado_em:new Date().toISOString()},
                     {id:'u2', nome:'Supervisor (exemplo)', email:'supervisor@demo', senha:'sup123', perfil:'SUPERVISOR', ativo:true, criado_em:new Date().toISOString()},
-                    {id:'u3', nome:'Financeiro (exemplo)', email:'financeiro@demo', senha:'fin123', perfil:'FINANCEIRO', ativo:true, criado_em:new Date().toISOString()});
-    S.seq.usuarios = 3;
+                    {id:'u3', nome:'Financeiro (exemplo)', email:'financeiro@demo', senha:'fin123', perfil:'FINANCEIRO', ativo:true, criado_em:new Date().toISOString()}, USU_RH());
+    S.seq.usuarios = 4;
     me = S.usuarios[0];
     const ins = (t, r) => { r.id = nid(t); S[t].push(r); return r; };
     SEED_FUNCOES.forEach(n => ins('funcoes', {nome:n, ativo:true}));
@@ -693,14 +697,16 @@ function DemoDB(){
      ['Helena Duarte','EMPRESA TESTE D',['CONFERENTE']],['Ivan Barros','EMPRESA TESTE D',['AUXILIAR']],['Jonas Ribeiro','EMPRESA TESTE D',['AUXILIAR']],['Kleber Souza','AVULSOS',['AUXILIAR','CONFERENTE']],['Luan Pires','AVULSOS',['AUXILIAR']],
      ['Marta Lima','EQUIPE PRÓPRIA (exemplo)',['AGENDAMENTO','CONFERENTE']],['Nelson Prado','EQUIPE PRÓPRIA (exemplo)',['AGENDAMENTO']]]
      .forEach(([n, e, fs], k) => { const t = ins('trabalhadores', {nome:n + ' (exemplo)', cpf:'', cnpj_mei:'', empresa_id:E(e), telefone:'', chave_pix:'', observacao:'', ativo:true}); fs.forEach(f => S.trabalhador_funcoes.push({trabalhador_id:t.id, funcao_id:F(f)})); });
+    // jornada de exemplo (só a primeira funcionária própria; a outra fica sem jornada para mostrar o aviso)
+    S.jornadas.push({trabalhador_id:S.trabalhadores.find(t => /^Marta/.test(t.nome)).id, entrada:'08:00:00', saida_intervalo:'12:00:00', retorno_intervalo:'13:30:00', saida:'18:18:00', atualizado_em:new Date().toISOString()});
     // algumas requisições de exemplo no mês corrente
     const dia = k => { const d = addDias(hoje(), -k); return d < inicioMes() ? inicioMes() : d; };
     const T = c => id('turnos', 'codigo', c), N = n => id('navios', 'nome', n), A = n => id('armazens', 'nome', n);
     const exemplos = [
       [dia(4),'07x13','NAVIO TESTE 1','ARMAZÉM 1',[[1,'OPERADOR DE EMPILHADEIRA'],[2,'AUXILIAR'],[3,'CONFERENTE']],'u2','APROVADA'],
       [dia(4),'13x19','NAVIO TESTE 1','ARMAZÉM 1',[[4,'OPERADOR DE EMPILHADEIRA'],[5,'AUXILIAR'],[6,'CONFERENTE']],'u2','APROVADA'],
-      [dia(3),'19x07','NAVIO TESTE 2','PÁTIO',[[7,'OPERADOR DE EMPILHADEIRA'],[8,'CONFERENTE'],[9,'AUXILIAR'],[10,'AUXILIAR']],'u2','APROVADA'],
-      [dia(2),'07x19','NAVIO TESTE 3','ARMAZÉM 2',[[1,'OPERADOR DE EMPILHADEIRA'],[11,'CONFERENTE'],[12,'AUXILIAR'],[2,'AUXILIAR']],'u2','APROVADA'],
+      [dia(3),'19x07','NAVIO TESTE 2','PÁTIO',[[7,'OPERADOR DE EMPILHADEIRA'],[8,'CONFERENTE'],[9,'AUXILIAR'],[10,'AUXILIAR'],[13,'AGENDAMENTO']],'u2','APROVADA'],
+      [dia(2),'07x19','NAVIO TESTE 3','ARMAZÉM 2',[[1,'OPERADOR DE EMPILHADEIRA'],[11,'CONFERENTE'],[12,'AUXILIAR'],[2,'AUXILIAR'],[13,'AGENDAMENTO'],[14,'AGENDAMENTO']],'u2','APROVADA'],
       [dia(1),'07x13','NAVIO TESTE 3','ARMAZÉM 2',[[4,'OPERADOR DE EMPILHADEIRA'],[3,'CONFERENTE'],[5,'AUXILIAR']],'u2','ABERTA'],
       [hoje(),'13x19','NAVIO TESTE 2','ARMAZÉM 3',[[1,'AUXILIAR'],[9,'AUXILIAR']],'u2','ABERTA']];
     for (const [d, tu, na, ar, its, sup, st] of exemplos) {
@@ -810,7 +816,7 @@ const isFin = () => ME && ME.perfil === 'FINANCEIRO';
 const veValores = () => isAdmin() || isFin();
 const podeRequisitar = () => ME && (ME.perfil === 'ADMIN' || ME.perfil === 'SUPERVISOR');
 const podeCriarNavio = () => isAdmin() || isFin();
-const A = 'ADMIN', S_ = 'SUPERVISOR', F = 'FINANCEIRO';
+const A = 'ADMIN', S_ = 'SUPERVISOR', F = 'FINANCEIRO', RH_ = 'RH';
 const permite = perfis => !perfis || perfis.includes(ME.perfil);
 const byId = (t, id) => (C[t] || []).find(x => x.id === id) || {};
 const ordTurnos = l => [...l].sort((a, b) => a.horas - b.horas || inicioOp(a.hora_inicio) - inicioOp(b.hora_inicio));
@@ -866,7 +872,8 @@ function telaLogin(){
           <span class="muted" style="font-size:.86rem">Dados de exemplo salvos só neste navegador. Escolha um perfil para testar:</span>
           <div class="linha"><button type="button" class="btn peq" data-demo="admin@demo|admin123">Entrar como administrador</button>
           <button type="button" class="btn peq" data-demo="supervisor@demo|sup123">Entrar como supervisor</button>
-          <button type="button" class="btn peq" data-demo="financeiro@demo|fin123">Entrar como financeiro</button></div></div>` : ''}
+          <button type="button" class="btn peq" data-demo="financeiro@demo|fin123">Entrar como financeiro</button>
+          <button type="button" class="btn peq" data-demo="rh@demo|rh123">Entrar como RH</button></div></div>` : ''}
       </form>
     </section>
   </div>`;
@@ -884,6 +891,7 @@ function telaLogin(){
 const MENU = [
   ['Operação', [['painel','Painel',[A,F]],['requisicoes','Requisições'],['nova','Nova requisição',[A,S_]]]],
   ['Financeiro', [['fechamentos','Fechamentos',[A,F]]]],
+  ['Recursos Humanos', [['horas','Horas extras Seatrade',[A,RH_]]]],
   ['Cadastros', [['trabalhadores','Trabalhadores',[A,F]],['empresas','Empresas',[A,F]],['precos','Tabela de preços',[A,F]],['navios','Navios'],['armazens','Armazéns',[A]],['funcoes','Funções',[A]],['turnos','Turnos',[A]],['feriados','Feriados',[A,F]]]],
   ['Administração', [['usuarios','Usuários',[A]],['auditoria','Auditoria',[A,F]]]]
 ];
@@ -936,7 +944,8 @@ const ROTAS = {
   trabalhadores:{t:'Trabalhadores', p:[A,F], fn:() => vTrabalhadores()}, precos:{t:'Tabela de preços', p:[A,F], fn:() => vPrecos()},
   empresas:{t:'Empresas', p:[A,F], fn:() => vCrud('empresas')}, navios:{t:'Navios', fn:() => vCrud('navios')}, armazens:{t:'Armazéns', p:[A], fn:() => vCrud('armazens')},
   funcoes:{t:'Funções', p:[A], fn:() => vCrud('funcoes')}, turnos:{t:'Turnos', p:[A], fn:() => vCrud('turnos')}, feriados:{t:'Feriados', p:[A,F], fn:() => vCrud('feriados')},
-  usuarios:{t:'Usuários', p:[A], fn:() => vUsuarios()}, auditoria:{t:'Auditoria', p:[A,F], fn:() => vAuditoria()}
+  usuarios:{t:'Usuários', p:[A], fn:() => vUsuarios()}, auditoria:{t:'Auditoria', p:[A,F], fn:() => vAuditoria()},
+  horas:{t:'Horas extras Seatrade', p:[A,RH_], fn:() => vHoras()}
 };
 async function rotear(){
   if (!ME) return;
@@ -944,7 +953,7 @@ async function rotear(){
   let h = location.hash.slice(1);
   let m = /^req-(\d+)$/.exec(h);
   let mf = veValores() ? /^fec-(\d+)$/.exec(h) : null;
-  if (!m && !mf && (!ROTAS[h] || !permite(ROTAS[h].p))) h = veValores() ? 'painel' : 'requisicoes';
+  if (!m && !mf && (!ROTAS[h] || !permite(ROTAS[h].p))) h = veValores() ? 'painel' : ME.perfil === RH_ ? 'horas' : 'requisicoes';
   $$('#nav a').forEach(a => a.classList.toggle('ativo', a.dataset.r === (m ? 'requisicoes' : mf ? 'fechamentos' : h)));
   $('#topo-t').textContent = m ? reqNum(m[1]) : mf ? fecNum(mf[1]) : ROTAS[h].t;
   const main = $('#main');
@@ -1603,7 +1612,7 @@ async function vUsuarios(){
     <div class="tab-wrap"><table class="tab"><thead><tr><th>Nome</th><th>E-mail</th><th>Perfil</th><th>Situação</th></tr></thead><tbody>
     ${us.map(u => `<tr class="click" data-id="${esc(u.id)}"><td>${esc(u.nome)}${u.id === ME.id ? ' <span class="muted">(você)</span>' : ''}</td><td>${esc(u.email)}</td><td>${PERFIS[u.perfil] || u.perfil}</td>
       <td><span class="pill ${u.ativo ? 'APROVADA' : 'ABERTA'}">${u.ativo ? 'Ativo' : 'Aguardando liberação'}</span></td></tr>`).join('')}</tbody></table></div>`);
-  const perfis = () => [['SUPERVISOR','Supervisor'],['FINANCEIRO','Financeiro'],['ADMIN','Administrador']];
+  const perfis = () => [['SUPERVISOR','Supervisor'],['FINANCEIRO','Financeiro'],['RH','Recursos Humanos'],['ADMIN','Administrador']];
   $('#u-novo').onclick = () => {
     const cs = [{k:'nome',l:'Nome',req:1},{k:'email',l:'E-mail',type:'email',req:1},{k:'senha',l:'Senha inicial (mín. 6 caracteres)',type:'text',req:1},{k:'perfil',l:'Perfil',type:'select',req:1,opts:perfis}];
     modal('Novo usuário', cs.map(f => campo(f)).join('') + '<p class="muted" style="margin:0;font-size:.82rem">Passe a senha inicial ao usuário por um canal seguro.</p>', {okTxt:'Criar usuário', onOk: async fm => {
@@ -1624,6 +1633,115 @@ async function vUsuarios(){
       {okTxt:'Redefinir', onOk: async fm => { const n = $('#r-nova', fm).value; if (n.length < 6) throw new Error('A senha precisa ter pelo menos 6 caracteres.');
         await DB.definirSenha(u.id, n); toast('Senha redefinida.'); }});
   });
+}
+
+/* --------------------------- Horas extras (RH) --------------------------- */
+// Regras desta primeira versão: período de 16 a 15 (competência = mês em que termina);
+// fora da jornada de segunda a sexta = extra; noturno das 22h às 05h; domingo e feriado = 100%.
+const HE_FECHA = 15, HE_NOITE_INI = 22 * 60, HE_NOITE_FIM = 5 * 60;
+const HE_PADRAO = {entrada:'08:00', saida_intervalo:'12:00', retorno_intervalo:'13:30', saida:'18:18'};
+const minDe = s => { if (!s) return null; const [h, m] = String(s).split(':'); return +h * 60 + +m; };
+const hm = s => s ? String(s).slice(0, 5) : '';
+const fmtHM = min => { const m = Math.round(min); return m ? `${Math.floor(m / 60)}:${pad(m % 60)}` : '—'; };
+const compAtual = () => { const d = new Date(); if (d.getDate() > HE_FECHA) d.setMonth(d.getMonth() + 1, 1); return d.getFullYear() + '-' + pad(d.getMonth() + 1); };
+const competencia = ym => { const [y, m] = ym.split('-').map(Number); return [iso(new Date(y, m - 2, HE_FECHA + 1)), iso(new Date(y, m - 1, HE_FECHA))]; };
+const jornadaTxt = j => j ? `${hm(j.entrada)}${j.saida_intervalo ? '–' + hm(j.saida_intervalo) + ' / ' + hm(j.retorno_intervalo) : ''}–${hm(j.saida)}` : '';
+// Separa, minuto a minuto, as horas de uma linha da requisição em normal / extra diurna 50% / noturna 50% / 100%
+function calcHE(it, jor, fer){
+  const h0 = it.hora_inicio ?? byId('turnos', it.turno_id).hora_inicio;
+  const d0 = new Date(it.data + 'T00:00:00'); if (h0 < 7) d0.setDate(d0.getDate() + 1);   // turno da madrugada cai no dia seguinte
+  const per = jor ? [[minDe(jor.entrada), minDe(jor.saida_intervalo || jor.saida)]].concat(jor.saida_intervalo ? [[minDe(jor.retorno_intervalo), minDe(jor.saida)]] : []) : [];
+  const r = {normal:0, d50:0, n50:0, c100:0}, ini = h0 * 60;
+  for (let k = 0; k < it.horas * 60; k++) {
+    const abs = ini + k, t = abs % 1440, dia = new Date(d0); dia.setDate(d0.getDate() + Math.floor(abs / 1440));
+    const dw = dia.getDay();
+    if (dw === 0 || fer.has(iso(dia))) r.c100++;
+    else if (dw <= 5 && per.some(([a, b]) => t >= a && t < b)) r.normal++;
+    else if (t >= HE_NOITE_INI || t < HE_NOITE_FIM) r.n50++;
+    else r.d50++;
+  }
+  return r;
+}
+async function vHoras(){
+  const st = estado.horas || (estado.horas = {comp:compAtual(), soAprov:true});
+  pagina('Horas extras Seatrade', 'Horas dos funcionários próprios nas requisições, comparadas com a jornada de cada um. Período de 16 a 15.',
+    '<button class="btn" id="he-padrao" type="button">Jornada padrão para quem não tem</button><button class="btn" id="he-csv" type="button">Baixar CSV</button>', `
+    <div class="filtros">
+      <div class="campo"><label for="he-comp">Competência</label><input type="month" id="he-comp" value="${st.comp}"></div>
+      <label class="check" style="padding-bottom:10px"><input type="checkbox" id="he-ap" ${st.soAprov ? 'checked' : ''}> Somente requisições aprovadas</label>
+      <span class="muted" id="he-per" style="padding-bottom:10px;font-size:.88rem"></span>
+    </div>
+    <p class="nota" style="margin:0">Extra = horas da requisição fora da jornada de segunda a sexta. <b>Diurna 50%</b> e <b>noturna 50%</b> (22h às 05h) em dias comuns e sábados; <b>100%</b> em domingos e feriados (tabela Feriados). Sem jornada cadastrada, todas as horas contam como extra.</p>
+    <div id="he-corpo"><div class="carregando">Carregando…</div></div>`);
+  let linhas = [];
+  const desenhar = async () => {
+    const [ini, fim] = competencia(st.comp);
+    $('#he-per').textContent = `de ${fdata(ini)} a ${fdata(fim)}`;
+    const [itens, jornadas] = await Promise.all([DB.list('vw_itens', {gte:{data:ini}, lte:{data:fim}}), DB.list('jornadas')]);
+    const proprias = new Set(C.empresas.filter(e => e.propria).map(e => e.id));
+    const its = itens.filter(i => proprias.has(i.empresa_id) && i.trabalhador_id && i.status !== 'CANCELADA' && (!st.soAprov || i.status === 'APROVADA'));
+    const J = new Map(jornadas.map(j => [j.trabalhador_id, j])), fer = new Set(C.feriados.map(f => f.data));
+    linhas = C.trabalhadores.filter(t => proprias.has(t.empresa_id) && (t.ativo || its.some(i => i.trabalhador_id === t.id))).map(t => {
+      const tot = {normal:0, d50:0, n50:0, c100:0, min:0};
+      const det = its.filter(i => i.trabalhador_id === t.id).sort((a, b) => a.data.localeCompare(b.data)).map(i => { const c = calcHE(i, J.get(t.id), fer);
+        for (const k of ['normal','d50','n50','c100']) tot[k] += c[k]; tot.min += i.horas * 60; return {i, c}; });
+      return {t, jor:J.get(t.id), tot, det, extra:tot.d50 + tot.n50 + tot.c100};
+    }).sort((a, b) => b.extra - a.extra || a.t.nome.localeCompare(b.t.nome, 'pt-BR'));
+    const soma = k => linhas.reduce((s, l) => s + l.tot[k], 0), semJor = linhas.filter(l => !l.jor).length;
+    $('#he-corpo').innerHTML = (semJor ? `<p class="aviso" style="margin:0 0 8px;font-size:.88rem">${semJor} funcionário(s) sem jornada cadastrada.</p>` : '') + `<div class="tab-wrap"><table class="tab"><thead><tr>
+      <th>Funcionário</th><th>Jornada (seg–sex)</th><th class="num">Requisições</th><th class="num">Horas</th><th class="num">Normais</th>
+      <th class="num">Extra diurna 50%</th><th class="num">Extra noturna 50%</th><th class="num">Extra 100%</th><th class="num">Total extra</th><th></th></tr></thead><tbody>
+      ${linhas.map((l, k) => `<tr class="click" data-k="${k}"><td>${esc(l.t.nome)}${l.t.ativo ? '' : ' <span class="muted">(inativo)</span>'}</td>
+        <td>${l.jor ? `<span class="mono" style="font-size:.85rem">${jornadaTxt(l.jor)}</span>` : '<span class="aviso">não informada</span>'}</td>
+        <td class="num">${l.det.length || '—'}</td><td class="num">${fmtHM(l.tot.min)}</td><td class="num">${fmtHM(l.tot.normal)}</td>
+        <td class="num">${fmtHM(l.tot.d50)}</td><td class="num">${fmtHM(l.tot.n50)}</td><td class="num">${fmtHM(l.tot.c100)}</td><td class="num"><b>${fmtHM(l.extra)}</b></td>
+        <td><button class="btn peq" type="button" data-jor="${k}">Jornada</button></td></tr>`).join('')}</tbody>
+      <tfoot><tr><td colspan="3">Total</td><td class="num">${fmtHM(soma('min'))}</td><td class="num">${fmtHM(soma('normal'))}</td><td class="num">${fmtHM(soma('d50'))}</td><td class="num">${fmtHM(soma('n50'))}</td><td class="num">${fmtHM(soma('c100'))}</td><td class="num">${fmtHM(soma('d50') + soma('n50') + soma('c100'))}</td><td></td></tr></tfoot></table></div>`;
+    $$('#he-corpo [data-jor]').forEach(b => b.onclick = ev => { ev.stopPropagation(); editarJornada(linhas[+b.dataset.jor]); });
+    $$('#he-corpo tr.click').forEach(tr => tr.onclick = () => detalhe(linhas[+tr.dataset.k]));
+  };
+  const detalhe = l => modal(`${l.t.nome} · ${st.comp.slice(5)}/${st.comp.slice(0, 4)}`, `<p class="muted" style="margin:0">Jornada: ${l.jor ? jornadaTxt(l.jor) + ' (seg–sex)' : 'não informada'}</p>` + (l.det.length ? `
+    <div class="tab-wrap"><table class="tab"><thead><tr><th>Data</th><th>Requisição</th><th>Horário</th><th class="num">Normais</th><th class="num">Diurna 50%</th><th class="num">Noturna 50%</th><th class="num">100%</th></tr></thead><tbody>
+    ${l.det.map(({i, c}) => { const h0 = i.hora_inicio ?? byId('turnos', i.turno_id).hora_inicio;
+      return `<tr><td>${fdata(i.data)}</td><td><a href="#req-${i.requisicao_id}" class="reqnum">${reqNum(i.requisicao_id)}</a><div class="muted" style="font-size:.78rem">${esc(i.navio)} · ${esc(i.funcao)}</div></td>
+      <td class="mono" style="font-size:.85rem">${pad(h0)}h–${pad((h0 + i.horas) % 24)}h</td><td class="num">${fmtHM(c.normal)}</td><td class="num">${fmtHM(c.d50)}</td><td class="num">${fmtHM(c.n50)}</td><td class="num">${fmtHM(c.c100)}</td></tr>`; }).join('')}
+    </tbody></table></div>` : '<div class="vazio">Nenhuma requisição no período.</div>')).el.style.maxWidth = '900px';
+  const editarJornada = l => {
+    const j = l.jor || HE_PADRAO, semInt = l.jor && !l.jor.saida_intervalo;
+    const m = modal(`Jornada · ${l.t.nome}`, `<p class="muted" style="margin:0">Segunda a sexta. Horas da requisição fora destes horários contam como extra.</p>
+      <div class="grade"><div class="campo"><label for="j-ent">Entrada</label><input type="time" id="j-ent" value="${hm(j.entrada)}"></div>
+      <div class="campo"><label for="j-sai">Saída</label><input type="time" id="j-sai" value="${hm(j.saida)}"></div></div>
+      <label class="check"><input type="checkbox" id="j-semint" ${semInt ? 'checked' : ''}> Sem intervalo</label>
+      <div class="grade" id="j-int" style="${semInt ? 'display:none' : ''}"><div class="campo"><label for="j-si">Saída para intervalo</label><input type="time" id="j-si" value="${hm(j.saida_intervalo)}"></div>
+      <div class="campo"><label for="j-ri">Retorno do intervalo</label><input type="time" id="j-ri" value="${hm(j.retorno_intervalo)}"></div></div>
+      ${l.jor ? '' : '<p class="muted" style="margin:0;font-size:.82rem">Sugestão preenchida com a jornada padrão (08:00–12:00 / 13:30–18:18).</p>'}`, {okTxt:'Salvar jornada', onOk: async fm => {
+        const v = id => $(id, fm).value, sem = $('#j-semint', fm).checked;
+        const d = {entrada:v('#j-ent'), saida:v('#j-sai'), saida_intervalo:sem ? null : v('#j-si') || null, retorno_intervalo:sem ? null : v('#j-ri') || null};
+        if (!d.entrada || !d.saida) throw new Error('Informe a entrada e a saída.');
+        if (minDe(d.saida) <= minDe(d.entrada)) throw new Error('A saída precisa ser depois da entrada.');
+        if (!sem && (!d.saida_intervalo || !d.retorno_intervalo)) throw new Error('Informe o intervalo ou marque "Sem intervalo".');
+        if (!sem && !(minDe(d.entrada) < minDe(d.saida_intervalo) && minDe(d.saida_intervalo) <= minDe(d.retorno_intervalo) && minDe(d.retorno_intervalo) < minDe(d.saida))) throw new Error('O intervalo precisa ficar entre a entrada e a saída.');
+        if (l.jor) await DB.update('jornadas', {trabalhador_id:l.t.id}, {...d, atualizado_em:new Date().toISOString()});
+        else await DB.insert('jornadas', {trabalhador_id:l.t.id, ...d});
+        toast('Jornada salva.'); desenhar(); }});
+    $('#j-semint', m.el).onchange = e => { $('#j-int', m.el).style.display = e.target.checked ? 'none' : ''; };
+  };
+  $('#he-comp').onchange = e => { st.comp = e.target.value || compAtual(); desenhar(); };
+  $('#he-ap').onchange = e => { st.soAprov = e.target.checked; desenhar(); };
+  $('#he-padrao').onclick = () => { const sem = linhas.filter(l => !l.jor && l.t.ativo);
+    if (!sem.length) { toast('Todos os funcionários ativos já têm jornada.'); return; }
+    confirmar('Jornada padrão', `Grava 08:00–12:00 / 13:30–18:18 (seg–sex) para ${sem.length} funcionário(s) sem jornada. Depois dá para ajustar cada um em "Jornada".`, 'Gravar', async () => {
+      await DB.insert('jornadas', sem.map(l => ({trabalhador_id:l.t.id, ...HE_PADRAO}))); toast('Jornada padrão gravada.'); desenhar(); }); };
+  $('#he-csv').onclick = () => {
+    if (!linhas.length) { toast('Nada para exportar.', 1); return; }
+    const h = min => (min / 60).toFixed(2).replace('.', ',');
+    const cab = ['Funcionário','Jornada (seg-sex)','Requisições','Horas','Normais','Extra diurna 50%','Extra noturna 50%','Extra 100%','Total extra'];
+    const q = v => { const s = String(v ?? ''); return /[;"\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
+    const rows = linhas.map(l => [l.t.nome, l.jor ? jornadaTxt(l.jor) : 'não informada', l.det.length, h(l.tot.min), h(l.tot.normal), h(l.tot.d50), h(l.tot.n50), h(l.tot.c100), h(l.extra)].map(q).join(';'));
+    const blob = new Blob(['﻿' + [cab.join(';')].concat(rows).join('\r\n')], {type:'text/csv;charset=utf-8'});
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `horas-extras_${st.comp}.csv`; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+  };
+  await desenhar();
 }
 
 /* ------------------------------- Auditoria ------------------------------- */

@@ -37,7 +37,7 @@ create table if not exists public.usuarios (
 );
 alter table public.usuarios drop constraint if exists usuarios_perfil_check;
 alter table public.usuarios add constraint usuarios_perfil_check
-  check (perfil in ('ADMIN','SUPERVISOR','FINANCEIRO'));
+  check (perfil in ('ADMIN','SUPERVISOR','FINANCEIRO','RH'));
 
 -- Cria o registro em usuarios sempre que alguém é criado no Auth
 create or replace function public.fn_novo_usuario()
@@ -69,6 +69,11 @@ $$;
 create or replace function public.ve_valores()
 returns boolean language sql stable security definer set search_path = public as $$
   select coalesce(public.meu_perfil() in ('ADMIN','FINANCEIRO'), false)
+$$;
+-- Quem vê as horas e jornadas dos funcionários próprios (ADMIN e RH)
+create or replace function public.ve_horas_rh()
+returns boolean language sql stable security definer set search_path = public as $$
+  select coalesce(public.meu_perfil() in ('ADMIN','RH'), false)
 $$;
 -- Quem lança requisições (ADMIN e SUPERVISOR)
 create or replace function public.pode_requisitar()
@@ -237,6 +242,20 @@ alter table public.requisicao_itens add column if not exists hora_fim    int che
 -- Funcionários próprios: empresa marcada "propria" (a própria agência). Entram na requisição
 -- com habilitação e conflito de turno, mas sem preço (valor vazio) e fora dos fechamentos.
 alter table public.empresas add column if not exists propria boolean not null default false;
+
+-- Jornada contratual (segunda a sexta) dos funcionários próprios, para o cálculo de horas extras.
+-- Só ADMIN e RH leem e alteram (políticas na seção 8).
+create table if not exists public.jornadas (
+  trabalhador_id     bigint primary key references public.trabalhadores(id) on delete cascade,
+  entrada            time not null,
+  saida_intervalo    time,
+  retorno_intervalo  time,
+  saida              time not null,
+  atualizado_em      timestamptz not null default now(),
+  check (saida > entrada),
+  check ((saida_intervalo is null) = (retorno_intervalo is null)),
+  check (saida_intervalo is null or (entrada < saida_intervalo and saida_intervalo <= retorno_intervalo and retorno_intervalo < saida))
+);
 
 -- ---------------------------------------------------------------------
 -- 4b. FECHAMENTOS (FINANCEIRO): lote de diárias aprovadas de um fornecedor x período
@@ -810,6 +829,14 @@ drop policy if exists fec_sel on public.fechamentos;
 create policy fec_sel on public.fechamentos for select using (public.ve_valores());
 drop policy if exists fec_upd on public.fechamentos;
 create policy fec_upd on public.fechamentos for update using (public.ve_valores()) with check (public.ve_valores());
+
+-- Jornadas dos funcionários próprios: só ADMIN e RH
+alter table public.jornadas enable row level security;
+drop policy if exists jor_rh on public.jornadas;
+create policy jor_rh on public.jornadas for all using (public.ve_horas_rh()) with check (public.ve_horas_rh());
+revoke all on public.jornadas from anon;
+grant select, insert, update, delete on public.jornadas to authenticated;
+grant execute on function public.ve_horas_rh() to authenticated;
 
 -- Auditoria: leitura ADMIN e FINANCEIRO (gravação apenas via trigger)
 drop policy if exists aud_sel on public.auditoria;
