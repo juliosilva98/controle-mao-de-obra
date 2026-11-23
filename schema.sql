@@ -234,6 +234,10 @@ alter table public.requisicao_itens add column if not exists hora_inicio int che
 alter table public.requisicao_itens add column if not exists hora_fim    int check (hora_fim between 0 and 23);
 -- (o turno "POR HORA" é criado na seção 9, depois dos turnos padrão)
 
+-- Funcionários próprios: empresa marcada "propria" (a própria agência). Entram na requisição
+-- com habilitação e conflito de turno, mas sem preço (valor vazio) e fora dos fechamentos.
+alter table public.empresas add column if not exists propria boolean not null default false;
+
 -- ---------------------------------------------------------------------
 -- 4b. FECHAMENTOS (FINANCEIRO): lote de diárias aprovadas de um fornecedor x período
 -- ---------------------------------------------------------------------
@@ -435,7 +439,9 @@ begin
   else
     select * into tb from public.trabalhadores where id = new.trabalhador_id;
     if not tb.ativo then raise exception 'Trabalhador % está inativo.', tb.nome; end if;
-    if not exists (select 1 from public.trabalhador_funcoes
+    -- funcionário próprio entra em qualquer função (não precisa de habilitação cadastrada)
+    if not coalesce((select propria from public.empresas where id = tb.empresa_id), false)
+       and not exists (select 1 from public.trabalhador_funcoes
                    where trabalhador_id = tb.id and funcao_id = new.funcao_id) then
       raise exception '% não está habilitado nesta função.', tb.nome;
     end if;
@@ -444,7 +450,13 @@ begin
     select nome into v_quem from public.empresas where id = tb.empresa_id;
   end if;
 
-  if new.hora_inicio is null and new.hora_fim is null then
+  if coalesce((select propria from public.empresas where id = new.empresa_id), false) then
+    -- funcionário próprio: horas do turno ou do horário digitado, sem preço
+    if (new.hora_inicio is null) <> (new.hora_fim is null) then raise exception 'Informe a hora de início e a de fim.'; end if;
+    new.horas := case when new.hora_inicio is null then t.horas else (new.hora_fim - new.hora_inicio + 24) % 24 end;
+    if new.horas = 0 then raise exception 'A hora de fim deve ser diferente da de início.'; end if;
+    v_valor := null;
+  elsif new.hora_inicio is null and new.hora_fim is null then
     -- turno da requisição: preço do turno
     new.horas := t.horas;
     select p.valor into v_valor
@@ -577,6 +589,9 @@ declare v_id bigint;
 begin
   if not public.ve_valores() then raise exception 'Você não tem permissão para esta operação.'; end if;
   if p_fim < p_inicio then raise exception 'A data final é anterior à inicial.'; end if;
+  if coalesce((select propria from public.empresas where id = p_empresa_id), false) then
+    raise exception 'Funcionários próprios não entram em fechamento de fornecedor.';
+  end if;
   if not exists (select 1 from public.requisicao_itens i join public.requisicoes r on r.id = i.requisicao_id
                   where i.empresa_id = p_empresa_id and r.status = 'APROVADA'
                     and r.data between p_inicio and p_fim and i.fechamento_id is null) then
@@ -818,7 +833,7 @@ grant select on public.vw_requisicoes, public.vw_itens, public.vw_fechamentos, p
 -- ---------------------------------------------------------------------
 -- Só carrega quando a tabela está vazia (rodar de novo não recria o que você renomeou)
 insert into public.funcoes (nome)
-select v.nome from (values ('OPERADOR DE EMPILHADEIRA'), ('CONFERENTE'), ('AUXILIAR')) v(nome)
+select v.nome from (values ('OPERADOR DE EMPILHADEIRA'), ('CONFERENTE'), ('AUXILIAR'), ('AGENDAMENTO')) v(nome)
 where not exists (select 1 from public.funcoes)
 on conflict (nome) do nothing;
 
