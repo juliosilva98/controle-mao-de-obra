@@ -234,6 +234,10 @@ table.tab{width:100%;border-collapse:collapse;font-size:.9rem}
 .grupo-func{margin-top:6px}
 .grupo-func h3{font-size:.8rem;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:14px 0 6px}
 .lista-trab{display:grid;gap:6px}
+.concluir-req{display:flex;flex-wrap:wrap;align-items:center;justify-content:flex-end;gap:10px 16px;margin:4px 0 24px}
+.concluir-req .muted{flex:1 1 260px;font-size:.88rem}
+.concluir-req .btn{padding:12px 22px;font-size:1rem}
+@media (max-width:640px){.concluir-req .btn{flex:1 1 100%}}
 /* nome à esquerda; valor e botões à direita, descendo para a linha de baixo quando não cabem (celular) */
 .trab{display:flex;flex-wrap:wrap;justify-content:space-between;gap:8px 12px;align-items:center;padding:10px 12px;border:1px solid var(--line);border-radius:6px;background:var(--surface)}
 .trab>div:first-child{flex:1 1 170px;min-width:0}
@@ -1295,7 +1299,8 @@ async function vDetalhe(id){
         <div class="lado">${veValores() ? (byId('empresas', i.empresa_id).propria ? '<span class="muted" style="font-size:.85rem">próprio</span>' : `<span class="mono">${brl(i.valor)}</span>`) : ''}${editavel && i.por_funcao ? `<button class="btn peq" type="button" data-nome="${i.id}">${i.nome_trabalhador ? 'Alterar nome' : 'Pôr nome'}</button>` : ''}${editavel ? `<button class="btn peq perigo" type="button" data-rem="${i.id}" aria-label="Remover ${esc(i.trabalhador)}">Remover</button>` : ''}</div></div>`).join('')}</div></div>`).join('')
         : '<div class="vazio">Nenhum trabalhador nesta requisição ainda.</div>'}
     </section>
-    ${editavel ? '<section class="painel" id="d-add"></section>' : ''}`);
+    ${editavel ? '<section class="painel" id="d-add"></section>' : ''}
+    ${editavel && itens.length ? `<div class="concluir-req"><span class="muted">Terminou de lançar as pessoas? A requisição fica salva e continua podendo ser editada pela lista de Requisições.</span><button class="btn primario" id="d-concluir" type="button">Concluir requisição</button></div>` : ''}`);
 
   if ($('#topo-t')) $('#topo-t').textContent = reqNum(r.id);
   // pré-carrega as bibliotecas do PDF para o "Enviar" abrir rápido
@@ -1307,6 +1312,7 @@ async function vDetalhe(id){
         toast('PDF baixado. No WhatsApp: clipe (anexar) → Documento → escolha o arquivo.'); }
     } catch (e) { if (e.name !== 'AbortError') toast('Não foi possível gerar o espelho: ' + e.message, 1); }
   };
+  if ($('#d-concluir')) $('#d-concluir').onclick = () => { toast(`${reqNum(r.id)} concluída com ${itens.length} ${itens.length === 1 ? 'pessoa' : 'pessoas'}.`); location.hash = 'nova'; };
   if ($('#d-pdf')) $('#d-pdf').onclick = () => espelho(false);
   if ($('#d-zap')) $('#d-zap').onclick = () => espelho(true);
   $$('[data-nome]').forEach(b => b.onclick = () => { const it = itens.find(i => i.id === +b.dataset.nome);
