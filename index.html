@@ -1126,10 +1126,13 @@ function podeCompartilharArquivo(){
 async function gerarEspelho(r, itens){
   if (!window.jspdf) await carregarScript(JSPDF_CDN);
   if (!window.qrcode) await carregarScript(QR_CDN);
-  // Folha carta (Letter) na horizontal, layout compacto
-  const doc = new window.jspdf.jsPDF({unit:'mm', format:'letter', orientation:'landscape'});
-  const W = doc.internal.pageSize.getWidth(), H = doc.internal.pageSize.getHeight(), M = 12, num = reqNum(r.id);
-  const link = location.origin + location.pathname + '#req-' + r.id;
+  // Formato comprovante: 100 mm de largura, altura conforme a quantidade de pessoas (uma página só)
+  const ordenados = [...itens].sort((a, b) => String(a.funcao).localeCompare(String(b.funcao)) || String(a.trabalhador).localeCompare(String(b.trabalhador), 'pt-BR'));
+  const grupos = [...ordenados.reduce((m, i) => m.set(i.funcao, [...(m.get(i.funcao) || []), i]), new Map())];
+  const extras = (r.observacao ? 1 : 0) + (r.status === 'CANCELADA' && r.motivo_cancelamento ? 1 : 0);
+  const W = 100, M = 6, H = Math.max(90, 76 + extras * 5 + grupos.length * 6 + ordenados.length * 7.6 + 12);
+  const doc = new window.jspdf.jsPDF({unit:'mm', format:[W, H], orientation:'portrait'});
+  const num = reqNum(r.id), link = location.origin + location.pathname + '#req-' + r.id;
   const AZUL = [20, 34, 47], CINZA = [90, 107, 123], LINHA = [211, 220, 228];
   const fonte = (s, b) => { doc.setFont('helvetica', b ? 'bold' : 'normal'); doc.setFontSize(s); };
   // corta o texto pela largura real (mm), com reticências
@@ -1140,62 +1143,54 @@ async function gerarEspelho(r, itens){
 
   // QR code em vetor (nítido em qualquer tela)
   const qr = window.qrcode(0, 'M'); qr.addData(link); qr.make();
-  const n = qr.getModuleCount(), lado = 26, cel = lado / n, qx = W - M - lado, qy = 9;
+  const n = qr.getModuleCount(), lado = 22, cel = lado / n, qx = W - M - lado, qy = 5;
   doc.setFillColor(0, 0, 0);
   for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) if (qr.isDark(i, j)) doc.rect(qx + j * cel, qy + i * cel, cel + 0.02, cel + 0.02, 'F');
-  txt('Conferir no sistema', qx + lado / 2, qy + lado + 3.5, {s:6.5, c:CINZA, a:'center'});
+  txt('Conferir no sistema', qx + lado / 2, qy + lado + 2.8, {s:5.5, c:CINZA, a:'center'});
 
-  // Cabeçalho: título, número e situação
-  txt('CONTROLE DE MÃO DE OBRA SEATRADE', M, 14, {s:8, b:1, c:CINZA});
-  txt('Espelho de requisição de mão de obra', M, 21, {s:12, b:1});
-  txt('Nº ' + num, M, 31, {s:19, b:1});
-  fonte(19, 1); const xSt = M + doc.getTextWidth('Nº ' + num) + 6;
+  // Cabeçalho: título, número e situação (à esquerda do QR)
+  const lt = qx - M - 3;
+  txt('CONTROLE DE MÃO DE OBRA SEATRADE', M, 9, {s:6, b:1, c:CINZA, w:lt});
+  txt('Requisição de mão de obra', M, 14.5, {s:9, b:1, w:lt});
+  txt('Nº ' + num, M, 22.5, {s:15, b:1});
   const corSt = r.status === 'APROVADA' ? [22, 120, 70] : r.status === 'CANCELADA' ? [180, 35, 35] : [170, 110, 0];
-  txt((STATUS[r.status] || r.status).toUpperCase() + (r.status === 'ABERTA' ? ' · aguardando aprovação' : ''), xSt, 30.5, {s:9.5, b:1, c:corSt});
+  txt((STATUS[r.status] || r.status).toUpperCase() + (r.status === 'ABERTA' ? ' · aguardando aprovação' : ''), M, 28, {s:7.5, b:1, c:corSt, w:lt});
 
-  // Dados da requisição: 4 colunas entre o título e o QR
+  // Dados da requisição: 2 colunas
   const campos = [
-    ['Navio', r.navio + (r.viagem ? ' · viagem ' + r.viagem : '')], ['Armazém / local', r.armazem],
-    ['Data do dia operacional', fdata(r.data) + ' · ' + DIAS[dow(r.data)]], ['Turno', `${r.turno} · ${r.horas_turno}h ${r.periodo === 'NOTURNO' ? 'noturno' : 'diurno'} · ${TIPO_DIA[r.tipo_dia]}`],
-    ['Supervisor', r.supervisor], ['Criada em', fdh(r.criado_em)],
-    ['Aprovação', r.aprovado_em ? `${r.aprovado_por_nome || ''} · ${fdh(r.aprovado_em).slice(0, 10)}` : '—'], ['Trabalhadores', `${itens.length} · ${itens.reduce((s, i) => s + i.horas, 0)} horas-homem`]];
-  doc.setDrawColor(...LINHA); doc.setLineWidth(0.3); doc.line(M, 38, qx - 4, 38);
-  const larg = (qx - 4 - M) / 4;
-  campos.forEach(([l, v], k) => { const x = M + (k % 4) * larg, y = 44 + Math.floor(k / 4) * 10;
-    txt(l.toUpperCase(), x, y, {s:6.5, b:1, c:CINZA}); txt(v, x, y + 4.3, {s:9, w:larg - 3}); });
-  let y = 62;
-  const linhaTexto = (rot, valor) => { if (!valor) return; txt(rot.toUpperCase() + ':', M, y, {s:6.5, b:1, c:CINZA});
-    fonte(6.5, 1); const x = M + doc.getTextWidth(rot.toUpperCase() + ':') + 2; txt(valor, x, y, {s:9, w:W - M - x}); y += 5.5; };
+    ['Navio', r.navio + (r.viagem ? ' · ' + r.viagem : '')], ['Armazém / local', r.armazem],
+    ['Data', fdata(r.data) + ' · ' + DIAS[dow(r.data)]], ['Turno', `${r.turno} · ${r.horas_turno}h · ${TIPO_DIA[r.tipo_dia]}`],
+    ['Supervisor', r.supervisor], ['Aprovação', r.aprovado_em ? `${r.aprovado_por_nome || ''} · ${fdh(r.aprovado_em).slice(0, 10)}` : '—'],
+    ['Trabalhadores', `${itens.length} pessoas · ${itens.reduce((s, i) => s + i.horas, 0)} HH`], ['Criada em', fdh(r.criado_em)]];
+  doc.setDrawColor(...LINHA); doc.setLineWidth(0.3); doc.line(M, 33, W - M, 33);
+  const larg = (W - 2 * M) / 2;
+  campos.forEach(([l, v], k) => { const x = M + (k % 2) * larg, y = 38 + Math.floor(k / 2) * 8.5;
+    txt(l.toUpperCase(), x, y, {s:5.5, b:1, c:CINZA}); txt(v, x, y + 3.6, {s:8, w:larg - 2}); });
+  let y = 38 + 4 * 8.5 + 1;
+  const linhaTexto = (rot, valor) => { if (!valor) return; txt(rot.toUpperCase() + ':', M, y, {s:5.5, b:1, c:CINZA});
+    fonte(5.5, 1); const x = M + doc.getTextWidth(rot.toUpperCase() + ':') + 1.5; txt(valor, x, y, {s:7.5, w:W - M - x}); y += 5; };
   linhaTexto('Observação', r.observacao);
-  if (r.status === 'CANCELADA') linhaTexto('Motivo do cancelamento', r.motivo_cancelamento);
+  if (r.status === 'CANCELADA') linhaTexto('Motivo', r.motivo_cancelamento);
+  doc.line(M, y - 1.5, W - M, y - 1.5); y += 3;
 
-  // Resumo por função
-  const porFuncao = [...itens.reduce((m, i) => m.set(i.funcao, (m.get(i.funcao) || 0) + 1), new Map())].map(([f, q]) => `${f}: ${q}`).join('   ·   ');
-  doc.setFillColor(238, 242, 245); doc.roundedRect(M, y - 1, W - 2 * M, 7.5, 1.2, 1.2, 'F');
-  txt(porFuncao, M + 3, y + 4, {s:8.5, b:1, w:W - 2 * M - 6});
-  y += 13;
+  // Lista por função: nome em cima; empresa e horário embaixo
+  let k = 0;
+  for (const [fu, l] of grupos) {
+    doc.setFillColor(238, 242, 245); doc.roundedRect(M, y - 3.6, W - 2 * M, 5.4, 1, 1, 'F');
+    txt(`${fu} · ${l.length}`, M + 2, y, {s:7.5, b:1, w:W - 2 * M - 4}); y += 6;
+    for (const i of l) { k++;
+      txt(String(k), M + 3, y, {s:7, c:CINZA, a:'right'});
+      txt(i.trabalhador, M + 5, y, {s:8, b:1, w:W - 2 * M - 18});
+      txt(i.horas + 'h', W - M, y, {s:8, b:1, a:'right'});
+      txt(i.empresa + (i.hora_inicio != null ? ` · ${pad(i.hora_inicio)}h às ${pad(i.hora_fim)}h` : ''), M + 5, y + 3.3, {s:6.5, c:CINZA, w:W - 2 * M - 8});
+      y += 7.6; }
+  }
 
-  // Lista de trabalhadores
-  const col = [M, M + 9, M + 112, M + 186, W - M];
-  const rot = (s, x, a) => txt(s, x, y, {s:7, b:1, c:CINZA, a});
-  const cabecalho = () => { rot('#', col[0]); rot('TRABALHADOR', col[1]); rot('FUNÇÃO', col[2]); rot('EMPRESA', col[3]); rot('HORAS', col[4], 'right');
-    y += 1.8; doc.setDrawColor(...LINHA); doc.line(M, y, W - M, y); y += 4.3; };
-  cabecalho();
-  const ordenados = [...itens].sort((a, b) => String(a.funcao).localeCompare(String(b.funcao)) || String(a.trabalhador).localeCompare(String(b.trabalhador), 'pt-BR'));
-  ordenados.forEach((i, k) => {
-    if (y > H - 16) { doc.addPage(); y = 16; txt('Nº ' + num + ' (continuação)', M, y, {s:10, b:1}); y += 8; cabecalho(); }
-    txt(k + 1, col[0], y, {s:8.5, c:CINZA}); txt(i.trabalhador, col[1], y, {s:8.5, w:col[2] - col[1] - 4});
-    txt(i.funcao, col[2], y, {s:8.5, w:col[3] - col[2] - 4}); txt(i.empresa, col[3], y, {s:8.5, w:col[4] - col[3] - 30});
-    txt(horarioTxt(i), col[4], y, {s:8.5, a:'right'});
-    y += 2; doc.setDrawColor(235, 239, 243); doc.line(M, y, W - M, y); y += 3.8;
-  });
-
-  // Rodapé em todas as páginas
-  const total = doc.getNumberOfPages(), gerado = new Date().toLocaleString('pt-BR', {dateStyle:'short', timeStyle:'short'});
-  for (let p = 1; p <= total; p++) { doc.setPage(p);
-    doc.setDrawColor(...LINHA); doc.line(M, H - 10, W - M, H - 10);
-    txt(`Gerado em ${gerado}${ME ? ' por ' + ME.nome : ''} · Documento sem valores · A situação válida é a do sistema (QR code).`, M, H - 6, {s:6.5, c:CINZA});
-    txt(`Página ${p} de ${total}`, W - M, H - 6, {s:6.5, c:CINZA, a:'right'}); }
+  // Rodapé
+  const gerado = new Date().toLocaleString('pt-BR', {dateStyle:'short', timeStyle:'short'});
+  doc.setDrawColor(...LINHA); doc.line(M, H - 10, W - M, H - 10);
+  txt(`Gerado em ${gerado}${ME ? ' por ' + ME.nome : ''}`, M, H - 6.5, {s:5.5, c:CINZA, w:W - 2 * M});
+  txt('Sem valores · A situação válida é a do sistema (QR code).', M, H - 3.5, {s:5.5, c:CINZA, w:W - 2 * M});
 
   const blob = doc.output('blob');
   return new File([blob], `Requisicao_${num.replace(/\W+/g, '-')}.pdf`, {type:'application/pdf'});
