@@ -697,7 +697,8 @@ select i.id, i.requisicao_id, r.data, r.tipo_dia, r.status,
        r.turno_id, t.codigo as turno, t.periodo, i.horas,
        r.navio_id, n.nome as navio, n.viagem,
        r.armazem_id, a.nome as armazem,
-       i.trabalhador_id, coalesce(tb.nome, i.nome_trabalhador, 'Nome não informado') as trabalhador, tb.cnpj_mei,
+       i.trabalhador_id, coalesce(tb.nome, i.nome_trabalhador, 'Nome não informado') as trabalhador,
+       case when public.ve_valores() then tb.cnpj_mei end as cnpj_mei,
        i.funcao_id, f.nome as funcao,
        i.empresa_id, e.nome as empresa,
        r.supervisor_id, u.nome as supervisor,
@@ -857,7 +858,7 @@ revoke insert, update, delete on public.auditoria from anon, authenticated;
 grant usage, select on all sequences in schema public to authenticated;
 grant execute on function public.meu_perfil(), public.is_admin(), public.is_ativo(), public.ve_valores(),
   public.pode_requisitar(), public.fn_tipo_dia(date), public.fn_inicio_operacional(int)
-  to anon, authenticated;
+  to authenticated;
 
 -- O valor do item não é legível direto na tabela: leitura de valores só pelas views
 revoke select on public.requisicao_itens from anon, authenticated;
@@ -866,6 +867,44 @@ grant select (id, requisicao_id, trabalhador_id, funcao_id, empresa_id, horas, o
 revoke insert, delete on public.fechamentos from anon, authenticated;
 revoke all on public.vw_requisicoes, public.vw_itens, public.vw_fechamentos, public.vw_auditoria from anon;
 grant select on public.vw_requisicoes, public.vw_itens, public.vw_fechamentos, public.vw_auditoria to authenticated;
+
+-- ---------------------------------------------------------------------
+-- 8b. ENDURECIMENTO (revisão de segurança de 23/11/2026)
+-- ---------------------------------------------------------------------
+-- Dados pessoais do trabalhador (CPF, PIX, telefone, MEI): só ADMIN e FINANCEIRO leem a tabela.
+-- Os demais perfis usam a visão resumida (id, nome, empresa, situação).
+drop policy if exists cad_sel on public.trabalhadores;
+drop policy if exists trab_sel on public.trabalhadores;
+create policy trab_sel on public.trabalhadores for select using (public.ve_valores());
+create or replace view public.vw_trabalhadores as
+select id, nome, empresa_id, ativo from public.trabalhadores where public.is_ativo();
+revoke all on public.vw_trabalhadores from anon;
+grant select on public.vw_trabalhadores to authenticated;
+
+-- Visitante sem login (anon) não tem nenhuma permissão em tabelas, visões, sequências e funções do sistema
+revoke all on all tables    in schema public from anon;
+revoke all on all sequences in schema public from anon;
+-- Ninguém pela API apaga tabela inteira (TRUNCATE não passa pelas políticas) nem cria gatilho/referência
+revoke truncate, references, trigger on all tables in schema public from anon, authenticated;
+-- O mesmo para tabelas e funções criadas no futuro
+alter default privileges in schema public revoke all on tables    from anon;
+alter default privileges in schema public revoke all on sequences from anon;
+alter default privileges in schema public revoke execute on functions from anon, public;
+-- Funções do sistema: só usuário logado executa (as de extensão ficam como estão)
+do $$
+declare f record;
+begin
+  for f in select p.oid::regprocedure as sig
+             from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+             left join pg_depend d on d.objid = p.oid and d.deptype = 'e'
+            where n.nspname = 'public' and d.objid is null loop
+    execute format('revoke execute on function %s from public, anon', f.sig);
+  end loop;
+end $$;
+grant execute on function public.meu_perfil(), public.is_admin(), public.is_ativo(), public.ve_valores(),
+  public.pode_requisitar(), public.ve_horas_rh(), public.fn_tipo_dia(date), public.fn_inicio_operacional(int),
+  public.gerar_fechamento(bigint, date, date), public.desfazer_fechamento(bigint), public.admin_definir_senha(uuid, text)
+  to authenticated;
 
 -- ---------------------------------------------------------------------
 -- 9. CARGA INICIAL (somente dados genéricos)

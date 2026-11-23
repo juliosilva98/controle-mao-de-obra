@@ -163,6 +163,14 @@ Resultado: Painel → "Custo por navio" → leva o custo de mão de obra para o 
 - Fornecedor sem preço para uma função/turno fica bloqueado na escala (o banco recusa a inclusão).
 - Os dados do modo demonstração (EMPRESA TESTE A…D, NAVIO TESTE 1…3) são fictícios.
 
+**Proteções (revisão de 23/11/2026):**
+- Toda tabela tem RLS; visitante sem login (`anon`) não tem nenhuma permissão em tabelas, visões, sequências ou funções do sistema. Ninguém pela API executa `TRUNCATE`.
+- Valores em R$ (preços, itens, fechamentos, auditoria): só ADMIN e FINANCEIRO. Jornadas e horas extras: só ADMIN e RH.
+- Dados pessoais do trabalhador (CPF, PIX, telefone, MEI): só ADMIN e FINANCEIRO; os outros perfis leem `vw_trabalhadores` (id, nome, empresa, situação).
+- Usuário recém-cadastrado nasce bloqueado e não lê nada até o administrador liberar.
+- O site tem CSP (só carrega scripts dos CDNs usados e só se comunica com o Supabase do projeto) e SRI nos scripts externos (arquivo adulterado no CDN é recusado).
+- Exportações CSV neutralizam fórmulas (texto começando com `=`, `+`, `-`, `@`).
+
 ---
 
 ## 6. Problemas comuns

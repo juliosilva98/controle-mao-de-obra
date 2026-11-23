@@ -5,6 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Controle de Mão de Obra Seatrade</title>
 <meta name="claude:viewport-fit-sides" content="cover">
+<!-- Segurança: a página só carrega scripts destes CDNs e só conversa com o Supabase do projeto -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://jpwizlsqmakvlasoauyd.supabase.co wss://jpwizlsqmakvlasoauyd.supabase.co; object-src 'none'; base-uri 'none'; form-action 'self'">
+<meta name="referrer" content="strict-origin-when-cross-origin">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
 <style>
 /* Layout: painel lateral fixo (navegação) + área de trabalho; no celular a navegação vira gaveta. */
@@ -370,7 +373,12 @@ function toast(msg, erro){
   const t = document.createElement('div'); t.className = 'toast' + (erro ? ' erro-t' : ''); t.textContent = msg;
   $('#toasts').appendChild(t); setTimeout(() => t.remove(), erro ? 6000 : 3200);
 }
-function carregarScript(src){ return new Promise((ok, falha) => { const s = document.createElement('script'); s.src = src; s.onload = ok; s.onerror = () => falha(new Error('Não foi possível carregar ' + src)); document.head.appendChild(s); }); }
+// Impressão digital (SRI) de cada script externo: se o arquivo no CDN for alterado, o navegador recusa
+const SRI = {
+  'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js':'sha384-0w2KAL2YHP6wKOkUDzkCDGgVvfmHnj02DHeQ6XcHOgTfFsGyonKOpShMH1x6nk9o',
+  'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js':'sha384-JcnsjUPPylna1s1fvi1u12X5qjY5OL56iySh75FdtrwhO/SWXgMjoVqcKyIIWOLk',
+  'https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js':'sha384-mZT2gIty7ZDdOGkxfP6joZcYdMW1Jvj9dRlfpTmaJAKKXTqzygtB22k7FLe+KZC1'};
+function carregarScript(src){ return new Promise((ok, falha) => { const s = document.createElement('script'); if (SRI[src]) { s.integrity = SRI[src]; s.crossOrigin = 'anonymous'; } s.src = src; s.onload = ok; s.onerror = () => falha(new Error('Não foi possível carregar ' + src)); document.head.appendChild(s); }); }
 function filtrar(rows, o = {}){
   let r = rows;
   if (o.eq) for (const [k, v] of Object.entries(o.eq)) r = r.filter(x => x[k] === v);
@@ -827,7 +835,9 @@ const precoVigente = (emp, fun, tur, tipo, data) => C.tabela_precos.find(p => p.
 
 async function carregarCache(lista){
   const ts = lista || ['empresas','funcoes','turnos','armazens','navios','feriados','trabalhadores','trabalhador_funcoes','tabela_precos'];
-  const rs = await Promise.all(ts.map(t => DB.list(t)));
+  // dados pessoais do trabalhador (CPF, PIX, telefone) só para administrador e financeiro;
+  // os demais perfis leem a visão resumida (id, nome, empresa, situação)
+  const rs = await Promise.all(ts.map(t => DB.list(t === 'trabalhadores' && !veValores() && DB.modo !== 'demo' ? 'vw_trabalhadores' : t)));
   ts.forEach((t, i) => C[t] = rs[i]);
   C.turnos = ordTurnos(C.turnos); C.empresas = ordNome(C.empresas); C.funcoes = ordNome(C.funcoes);
   C.armazens = ordNome(C.armazens); C.navios = ordNome(C.navios); C.trabalhadores = ordNome(C.trabalhadores);
@@ -1438,7 +1448,7 @@ function exportarCSV(itens, nome){
   if (!itens.length) { toast('Nada para exportar nesse filtro.', 1); return; }
   const adm = veValores();
   const cab = ['Requisição','Data','Dia da semana','Tipo de dia','Turno','Horário próprio','Horas','Navio','Viagem','Armazém','Trabalhador','CNPJ MEI','Função','Empresa','Supervisor','Situação'].concat(adm ? ['Valor','Fechamento'] : []);
-  const q = v => { const s = String(v ?? ''); return /[;"\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
+  const q = v => { let s = String(v ?? ''); if (/^[=+\-@\t\r]/.test(s) && isNaN(Number(s.replace(',', '.')))) s = "'" + s;  /* evita fórmula maliciosa ao abrir no Excel */ return /[;"\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
   const linhas = [...itens].sort((a, b) => a.data.localeCompare(b.data) || a.requisicao_id - b.requisicao_id).map(i => [reqNum(i.requisicao_id), fdata(i.data), DIAS[dow(i.data)], TIPO_DIA[i.tipo_dia], i.turno, i.hora_inicio != null ? `${pad(i.hora_inicio)}h às ${pad(i.hora_fim)}h` : '', i.horas, i.navio, i.viagem, i.armazem, i.trabalhador, i.cnpj_mei, i.funcao, i.empresa, i.supervisor, STATUS[i.status]]
     .concat(adm ? [Number(i.valor || 0).toFixed(2).replace('.', ','), i.fechamento_id ? fecNum(i.fechamento_id) : ''] : []).map(q).join(';'));
   const blob = new Blob(['﻿' + [cab.join(';')].concat(linhas).join('\r\n')], {type:'text/csv;charset=utf-8'});
@@ -1736,7 +1746,7 @@ async function vHoras(){
     if (!linhas.length) { toast('Nada para exportar.', 1); return; }
     const h = min => (min / 60).toFixed(2).replace('.', ',');
     const cab = ['Funcionário','Jornada (seg-sex)','Requisições','Horas','Normais','Extra diurna 50%','Extra noturna 50%','Extra 100%','Total extra'];
-    const q = v => { const s = String(v ?? ''); return /[;"\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
+    const q = v => { let s = String(v ?? ''); if (/^[=+\-@\t\r]/.test(s) && isNaN(Number(s.replace(',', '.')))) s = "'" + s;  /* evita fórmula maliciosa ao abrir no Excel */ return /[;"\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
     const rows = linhas.map(l => [l.t.nome, l.jor ? jornadaTxt(l.jor) : 'não informada', l.det.length, h(l.tot.min), h(l.tot.normal), h(l.tot.d50), h(l.tot.n50), h(l.tot.c100), h(l.extra)].map(q).join(';'));
     const blob = new Blob(['﻿' + [cab.join(';')].concat(rows).join('\r\n')], {type:'text/csv;charset=utf-8'});
     const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `horas-extras_${st.comp}.csv`; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
