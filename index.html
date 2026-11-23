@@ -231,10 +231,13 @@ table.tab{width:100%;border-collapse:collapse;font-size:.9rem}
 .grupo-func{margin-top:6px}
 .grupo-func h3{font-size:.8rem;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:14px 0 6px}
 .lista-trab{display:grid;gap:6px}
-.trab{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 12px;align-items:center;padding:10px 12px;border:1px solid var(--line);border-radius:6px;background:var(--surface)}
+/* nome à esquerda; valor e botões à direita, descendo para a linha de baixo quando não cabem (celular) */
+.trab{display:flex;flex-wrap:wrap;justify-content:space-between;gap:8px 12px;align-items:center;padding:10px 12px;border:1px solid var(--line);border-radius:6px;background:var(--surface)}
+.trab>div:first-child{flex:1 1 170px;min-width:0}
 .trab .n{font-weight:500;overflow-wrap:anywhere}
 .trab .d{font-size:.8rem;color:var(--muted)}
-.trab .lado{display:flex;gap:10px;align-items:center}
+.trab .lado{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:8px 10px;align-items:center;margin-left:auto}
+@media (max-width:640px){.trab .lado{flex:1 1 100%;gap:6px}.trab .lado .btn.peq{padding:5px 8px}}
 .trab.bloq{opacity:.6}
 .aviso{font-size:.78rem;color:var(--signal)}
 
@@ -1240,7 +1243,7 @@ async function vDetalhe(id){
       <div class="cab-p"><h2>Trabalhadores</h2><div class="totais"><span><b>${itens.length}</b> pessoas</span><span><b>${hh}</b> HH</span>${veValores() ? `<span>Total <b>${brl(total)}</b></span>` : ''}</div></div>
       ${porFuncao.length ? porFuncao.map(([fu, l]) => `<div class="grupo-func"><h3>${esc(fu.nome)} · ${l.length}</h3><div class="lista-trab">${l.map(i => `
         <div class="trab"><div><div class="n">${i.por_funcao && !i.nome_trabalhador ? '<span class="muted" style="font-weight:400">Nome não informado</span>' : esc(i.trabalhador)}</div><div class="d">${esc(i.empresa)} · ${horarioTxt(i)}${i.por_funcao ? ' · por função' : ''}</div></div>
-        <div class="lado">${veValores() ? (byId('empresas', i.empresa_id).propria ? '<span class="muted" style="font-size:.85rem">próprio</span>' : `<span class="mono">${brl(i.valor)}</span>`) : ''}${editavel && i.por_funcao ? `<button class="btn peq" type="button" data-nome="${i.id}">${i.nome_trabalhador ? 'Alterar nome' : 'Informar nome'}</button>` : ''}${editavel ? `<button class="btn peq perigo" type="button" data-rem="${i.id}" aria-label="Remover ${esc(i.trabalhador)}">Remover</button>` : ''}</div></div>`).join('')}</div></div>`).join('')
+        <div class="lado">${veValores() ? (byId('empresas', i.empresa_id).propria ? '<span class="muted" style="font-size:.85rem">próprio</span>' : `<span class="mono">${brl(i.valor)}</span>`) : ''}${editavel && i.por_funcao ? `<button class="btn peq" type="button" data-nome="${i.id}">${i.nome_trabalhador ? 'Alterar nome' : 'Pôr nome'}</button>` : ''}${editavel ? `<button class="btn peq perigo" type="button" data-rem="${i.id}" aria-label="Remover ${esc(i.trabalhador)}">Remover</button>` : ''}</div></div>`).join('')}</div></div>`).join('')
         : '<div class="vazio">Nenhum trabalhador nesta requisição ainda.</div>'}
     </section>
     ${editavel ? '<section class="painel" id="d-add"></section>' : ''}`);
