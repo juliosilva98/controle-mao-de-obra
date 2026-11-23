@@ -349,6 +349,8 @@ const NUMS = {};
 const fmtNumero = r => r && (r.numero_fmt || (r.numero && r.numero_ano ? r.numero_ano + '/' + String(r.numero).padStart(4, '0') : null));
 const regNums = rows => { for (const r of rows) { const n = fmtNumero(r); if (n) NUMS['requisicao_id' in r ? r.requisicao_id : r.id] = n; } };
 const reqNum = id => NUMS[id] || 'REQ-' + String(id).padStart(5, '0');
+// Horário digitado na pessoa (ex.: 07h às 17h · 10h); sem horário próprio, só as horas do turno
+const horarioTxt = i => i.hora_inicio != null ? `${pad(i.hora_inicio)}h às ${pad(i.hora_fim)}h · ${i.horas}h` : `${i.horas}h`;
 const TIPO_DIA = {UTIL:'Dia útil', DOM_FER:'Domingo/feriado'};
 const STATUS = {ABERTA:'Aberta', APROVADA:'Aprovada', CANCELADA:'Cancelada'};
 const ST_FECH = {EM_CONFERENCIA:'Em conferência', CONFERIDO:'Conferido', PAGO:'Pago'};
@@ -429,34 +431,47 @@ function DemoDB(){
   function regraItem(row){
     const r = get('requisicoes', row.requisicao_id), t = get('turnos', r.turno_id);
     row.nome_trabalhador = String(row.nome_trabalhador ?? '').trim().toUpperCase() || null;
+    let tb = null, e;
     if (row.trabalhador_id == null) {
       // terceirizada por função: mesma regra do gatilho (sem habilitação nem conflito de turno)
       row.trabalhador_id = null;
-      const e = get('empresas', row.empresa_id);
+      e = get('empresas', row.empresa_id);
       if (!e) falha('Escolha a empresa.');
       if (!e.ativo) falha(`A empresa ${e.nome} está inativa.`);
       if (!e.por_funcao) falha(`A empresa ${e.nome} trabalha com trabalhadores cadastrados; escolha o trabalhador pela lista.`);
-      row.horas = t.horas;
-      const p = S.tabela_precos.find(p => p.empresa_id === e.id && p.funcao_id === row.funcao_id && p.turno_id === r.turno_id && p.tipo_dia === r.tipo_dia && r.data >= p.vigencia_inicio && (!p.vigencia_fim || r.data <= p.vigencia_fim));
-      if (!p) falha(`Sem preço cadastrado para a empresa ${e.nome} nesta função/turno (${r.tipo_dia === 'DOM_FER' ? 'domingo/feriado' : 'dia útil'}).`);
-      row.valor_unitario = p.valor;
-      return row;
+    } else {
+      row.nome_trabalhador = null;
+      tb = get('trabalhadores', row.trabalhador_id);
+      if (!tb.ativo) falha(`Trabalhador ${tb.nome} está inativo.`);
+      if (!S.trabalhador_funcoes.some(x => x.trabalhador_id === tb.id && x.funcao_id === row.funcao_id)) falha(`${tb.nome} não está habilitado nesta função.`);
+      if (S.requisicao_itens.some(i => i.requisicao_id === row.requisicao_id && i.trabalhador_id === row.trabalhador_id && i.id !== row.id)) falha(`${tb.nome} já está nesta requisição.`);
+      row.empresa_id = tb.empresa_id; e = get('empresas', tb.empresa_id);
     }
-    row.nome_trabalhador = null;
-    const tb = get('trabalhadores', row.trabalhador_id);
-    if (!tb.ativo) falha(`Trabalhador ${tb.nome} está inativo.`);
-    if (!S.trabalhador_funcoes.some(x => x.trabalhador_id === tb.id && x.funcao_id === row.funcao_id)) falha(`${tb.nome} não está habilitado nesta função.`);
-    if (S.requisicao_itens.some(i => i.requisicao_id === row.requisicao_id && i.trabalhador_id === row.trabalhador_id && i.id !== row.id)) falha(`${tb.nome} já está nesta requisição.`);
-    row.empresa_id = tb.empresa_id; row.horas = t.horas;
-    const p = S.tabela_precos.find(p => p.empresa_id === tb.empresa_id && p.funcao_id === row.funcao_id && p.turno_id === r.turno_id && p.tipo_dia === r.tipo_dia && r.data >= p.vigencia_inicio && (!p.vigencia_fim || r.data <= p.vigencia_fim));
-    if (!p) falha(`Sem preço cadastrado para a empresa de ${tb.nome} nesta função/turno (${r.tipo_dia === 'DOM_FER' ? 'domingo/feriado' : 'dia útil'}).`);
-    row.valor_unitario = p.valor;
+    const vale = p => p.empresa_id === e.id && p.funcao_id === row.funcao_id && p.tipo_dia === r.tipo_dia && r.data >= p.vigencia_inicio && (!p.vigencia_fim || r.data <= p.vigencia_fim);
+    const tipoTxt = r.tipo_dia === 'DOM_FER' ? 'domingo/feriado' : 'dia útil';
+    if (row.hora_inicio == null && row.hora_fim == null) {
+      row.hora_inicio = null; row.hora_fim = null; row.horas = t.horas;
+      const p = S.tabela_precos.find(p => vale(p) && p.turno_id === r.turno_id);
+      if (!p) falha(`Sem preço cadastrado para a empresa ${e.nome} nesta função/turno (${tipoTxt}).`);
+      row.valor_unitario = p.valor;
+    } else {
+      // horário digitado: horas × valor por hora (mesma regra do gatilho)
+      if (row.hora_inicio == null || row.hora_fim == null) falha('Informe a hora de início e a de fim.');
+      if (!e.aceita_hora) falha(`A empresa ${e.nome} não trabalha com horário digitado; use o turno da requisição.`);
+      row.horas = (row.hora_fim - row.hora_inicio + 24) % 24;
+      if (!row.horas) falha('A hora de fim deve ser diferente da de início.');
+      const p = S.tabela_precos.find(p => vale(p) && (get('turnos', p.turno_id) || {}).por_hora);
+      if (!p) falha(`Sem valor por hora cadastrado para a empresa ${e.nome} nesta função (${tipoTxt}).`);
+      row.valor_unitario = Math.round(p.valor * row.horas * 100) / 100;
+    }
+    if (!tb) return row;
+    const faixa = (i, tt) => ({hora_inicio:i.hora_inicio ?? tt.hora_inicio, horas:i.horas});
     for (const i of S.requisicao_itens) {
       if (i.trabalhador_id !== row.trabalhador_id || i.id === row.id) continue;
       const r2 = get('requisicoes', i.requisicao_id);
       if (r2.data !== r.data || r2.status === 'CANCELADA') continue;
       const t2 = get('turnos', r2.turno_id);
-      if (sobrepoe(t, t2)) falha(`${tb.nome} já está escalado no turno ${t2.codigo} deste dia.`);
+      if (sobrepoe(faixa(row, t), faixa(i, t2))) falha(`${tb.nome} já está escalado no turno ${t2.codigo} deste dia.`);
     }
     return row;
   }
@@ -503,7 +518,7 @@ function DemoDB(){
         navio_id:r.navio_id, navio:na.nome, viagem:na.viagem, armazem_id:r.armazem_id, armazem:nome('armazens', r.armazem_id), trabalhador_id:tb ? tb.id : null, trabalhador:tb ? tb.nome : (i.nome_trabalhador || 'Nome não informado'), cnpj_mei:tb ? tb.cnpj_mei : null,
         funcao_id:i.funcao_id, funcao:nome('funcoes', i.funcao_id), empresa_id:i.empresa_id, empresa:nome('empresas', i.empresa_id), supervisor_id:r.supervisor_id,
         supervisor:nome('usuarios', r.supervisor_id), valor:veVal() ? i.valor_unitario : null, observacao:i.observacao, fechamento_id:i.fechamento_id || null, numero_fmt:fmtNumero(r),
-        nome_trabalhador:i.nome_trabalhador || null, por_funcao:i.trabalhador_id == null};
+        nome_trabalhador:i.nome_trabalhador || null, por_funcao:i.trabalhador_id == null, hora_inicio:i.hora_inicio ?? null, hora_fim:i.hora_fim ?? null};
     });
   }
 
@@ -648,6 +663,11 @@ function DemoDB(){
     const id = (t, campo, v) => S[t].find(x => x[campo] === v).id;
     for (const [tipo, fs] of Object.entries(SEED_PRECOS)) for (const [fn, es] of Object.entries(fs)) for (const [en, vals] of Object.entries(es)) if (vals)
       vals.forEach((v, i) => ins('tabela_precos', {empresa_id:id('empresas', 'nome', en), funcao_id:id('funcoes', 'nome', fn), turno_id:id('turnos', 'codigo', SEED_TURNOS[i][0]), tipo_dia:tipo, valor:v, vigencia_inicio:'2026-01-01', vigencia_fim:null}));
+    // horário digitado (valor por hora): exemplo só na EMPRESA TESTE A
+    const tHora = ins('turnos', {codigo:'POR HORA', descricao:'Valor por hora (horário digitado na requisição)', hora_inicio:0, horas:1, periodo:'DIURNO', por_hora:true, ativo:true});
+    S.empresas.find(e => e.nome === 'EMPRESA TESTE A').aceita_hora = true;
+    [['OPERADOR DE EMPILHADEIRA',50],['CONFERENTE',35],['AUXILIAR',32]].forEach(([fn, v]) => [['UTIL',v],['DOM_FER',v * 2]].forEach(([tipo, vv]) =>
+      ins('tabela_precos', {empresa_id:id('empresas', 'nome', 'EMPRESA TESTE A'), funcao_id:id('funcoes', 'nome', fn), turno_id:tHora.id, tipo_dia:tipo, valor:vv, vigencia_inicio:'2026-01-01', vigencia_fim:null})));
     [['NAVIO TESTE 1','026N'],['NAVIO TESTE 2','114S'],['NAVIO TESTE 3','008E']].forEach(([n, v]) => ins('navios', {nome:n, viagem:v, eta:null, observacao:'Exemplo', ativo:true}));
     const F = n => id('funcoes', 'nome', n), E = n => id('empresas', 'nome', n);
     [['Adriano Lopes','EMPRESA TESTE A',['OPERADOR DE EMPILHADEIRA','AUXILIAR']],['Bruno Teixeira','EMPRESA TESTE A',['AUXILIAR']],['Carla Nunes','EMPRESA TESTE A',['CONFERENTE','AUXILIAR']],
@@ -1047,7 +1067,7 @@ async function vRequisicoes(){
 
 /* --------------------------- Nova requisição --------------------------- */
 function formCabecalho(r = {}){
-  const turnos = C.turnos.filter(t => t.ativo || t.id === r.turno_id);
+  const turnos = C.turnos.filter(t => !t.por_hora && (t.ativo || t.id === r.turno_id));
   return `
     <div class="grade">
       <div class="campo"><label for="n-data">Data do dia operacional *</label><input type="date" id="n-data" value="${r.data || hoje()}" required><span id="n-tipo" class="muted" style="font-size:.82rem"></span></div>
@@ -1165,8 +1185,8 @@ async function gerarEspelho(r, itens){
   ordenados.forEach((i, k) => {
     if (y > H - 16) { doc.addPage(); y = 16; txt('Nº ' + num + ' (continuação)', M, y, {s:10, b:1}); y += 8; cabecalho(); }
     txt(k + 1, col[0], y, {s:8.5, c:CINZA}); txt(i.trabalhador, col[1], y, {s:8.5, w:col[2] - col[1] - 4});
-    txt(i.funcao, col[2], y, {s:8.5, w:col[3] - col[2] - 4}); txt(i.empresa, col[3], y, {s:8.5, w:col[4] - col[3] - 16});
-    txt(i.horas + 'h', col[4], y, {s:8.5, a:'right'});
+    txt(i.funcao, col[2], y, {s:8.5, w:col[3] - col[2] - 4}); txt(i.empresa, col[3], y, {s:8.5, w:col[4] - col[3] - 30});
+    txt(horarioTxt(i), col[4], y, {s:8.5, a:'right'});
     y += 2; doc.setDrawColor(235, 239, 243); doc.line(M, y, W - M, y); y += 3.8;
   });
 
@@ -1215,7 +1235,7 @@ async function vDetalhe(id){
     <section class="painel">
       <div class="cab-p"><h2>Trabalhadores</h2><div class="totais"><span><b>${itens.length}</b> pessoas</span><span><b>${hh}</b> HH</span>${veValores() ? `<span>Total <b>${brl(total)}</b></span>` : ''}</div></div>
       ${porFuncao.length ? porFuncao.map(([fu, l]) => `<div class="grupo-func"><h3>${esc(fu.nome)} · ${l.length}</h3><div class="lista-trab">${l.map(i => `
-        <div class="trab"><div><div class="n">${i.por_funcao && !i.nome_trabalhador ? '<span class="muted" style="font-weight:400">Nome não informado</span>' : esc(i.trabalhador)}</div><div class="d">${esc(i.empresa)} · ${i.horas}h${i.por_funcao ? ' · por função' : ''}</div></div>
+        <div class="trab"><div><div class="n">${i.por_funcao && !i.nome_trabalhador ? '<span class="muted" style="font-weight:400">Nome não informado</span>' : esc(i.trabalhador)}</div><div class="d">${esc(i.empresa)} · ${horarioTxt(i)}${i.por_funcao ? ' · por função' : ''}</div></div>
         <div class="lado">${veValores() ? `<span class="mono">${brl(i.valor)}</span>` : ''}${editavel && i.por_funcao ? `<button class="btn peq" type="button" data-nome="${i.id}">${i.nome_trabalhador ? 'Alterar nome' : 'Informar nome'}</button>` : ''}${editavel ? `<button class="btn peq perigo" type="button" data-rem="${i.id}" aria-label="Remover ${esc(i.trabalhador)}">Remover</button>` : ''}</div></div>`).join('')}</div></div>`).join('')
         : '<div class="vazio">Nenhum trabalhador nesta requisição ainda.</div>'}
     </section>
@@ -1254,8 +1274,8 @@ async function vDetalhe(id){
         const nova = await DB.insert('requisicoes', {...lerCabecalho(fm), supervisor_id:ME.id});
         const falhas = [];
         for (const i of itens) { try { await DB.insert('requisicao_itens', i.por_funcao
-            ? {requisicao_id:nova.id, trabalhador_id:null, empresa_id:i.empresa_id, funcao_id:i.funcao_id, nome_trabalhador:i.nome_trabalhador || null}
-            : {requisicao_id:nova.id, trabalhador_id:i.trabalhador_id, funcao_id:i.funcao_id}); } catch (e) { falhas.push(e.message); } }
+            ? {requisicao_id:nova.id, trabalhador_id:null, empresa_id:i.empresa_id, funcao_id:i.funcao_id, nome_trabalhador:i.nome_trabalhador || null, hora_inicio:i.hora_inicio ?? null, hora_fim:i.hora_fim ?? null}
+            : {requisicao_id:nova.id, trabalhador_id:i.trabalhador_id, funcao_id:i.funcao_id, hora_inicio:i.hora_inicio ?? null, hora_fim:i.hora_fim ?? null}); } catch (e) { falhas.push(e.message); } }
         location.hash = 'req-' + nova.id;
         if (falhas.length) modal(`${falhas.length} trabalhadores não foram copiados`, `<ul style="margin:0;padding-left:18px">${falhas.map(f => `<li>${esc(f)}</li>`).join('')}</ul>`);
         else toast(`${reqNum(nova.id)} criada com ${itens.length} trabalhadores.`);
@@ -1272,31 +1292,46 @@ async function painelAdicionar(r, itens){
   const funcoes = C.funcoes.filter(f => f.ativo);
   if (!funcoes.some(f => f.id === st.funcao)) st.funcao = funcoes[0] && funcoes[0].id;
   const box = $('#d-add');
+  // Horário digitado na pessoa (só empresas que aceitam; cobra valor por hora)
+  const empHora = C.empresas.filter(e => e.ativo && e.aceita_hora);
+  const hr = st.hor || (st.hor = {on:false, ini:7, fim:17});
+  if (!empHora.length) hr.on = false;
+  const horasDig = () => (hr.fim - hr.ini + 24) % 24;
+  const turnoHora = C.turnos.find(t => t.por_hora);
+  const faixaNova = () => hr.on ? {hora_inicio:hr.ini, horas:horasDig()} : turnoR;
+  const faixaDe = i => ({hora_inicio:i.hora_inicio ?? byId('turnos', i.turno_id).hora_inicio, horas:i.horas});
+  const preco = emp => { if (!veValores() || !emp) return null;
+    if (!hr.on) { const p = precoVigente(emp, st.funcao, r.turno_id, r.tipo_dia, r.data); return p ? +p.valor : null; }
+    const p = turnoHora && precoVigente(emp, st.funcao, turnoHora.id, r.tipo_dia, r.data); return p ? Math.round(p.valor * horasDig() * 100) / 100 : null; };
+  const extra = () => hr.on ? {hora_inicio:hr.ini, hora_fim:hr.fim} : {};
+  const semPrecoTxt = () => hr.on ? 'Empresa sem valor por hora para esta função' : 'Empresa sem preço para esta função/turno';
   const desenhar = () => {
     const termo = st.busca.toLowerCase();
-    const lista = C.trabalhadores.filter(t => t.ativo && !byId('empresas', t.empresa_id).por_funcao && funcoesDe(t.id).includes(st.funcao) && !nesta.has(t.id) && (!termo || t.nome.toLowerCase().includes(termo) || byId('empresas', t.empresa_id).nome.toLowerCase().includes(termo)));
+    const lista = C.trabalhadores.filter(t => t.ativo && !byId('empresas', t.empresa_id).por_funcao && (!hr.on || byId('empresas', t.empresa_id).aceita_hora) && funcoesDe(t.id).includes(st.funcao) && !nesta.has(t.id) && (!termo || t.nome.toLowerCase().includes(termo) || byId('empresas', t.empresa_id).nome.toLowerCase().includes(termo)));
     $('#a-lista', box).innerHTML = lista.length ? lista.map(t => {
-      const conf = doDia.find(i => i.trabalhador_id === t.id && sobrepoe(turnoR, byId('turnos', i.turno_id)));
-      const p = veValores() ? precoVigente(t.empresa_id, st.funcao, r.turno_id, r.tipo_dia, r.data) : null;
-      const semPreco = veValores() && !p;
+      const conf = doDia.find(i => i.trabalhador_id === t.id && sobrepoe(faixaNova(), faixaDe(i)));
+      const p = preco(t.empresa_id);
+      const semPreco = veValores() && p == null;
       return `<div class="trab ${conf || semPreco ? 'bloq' : ''}"><div><div class="n">${esc(t.nome)}</div><div class="d">${esc(byId('empresas', t.empresa_id).nome)}${t.cnpj_mei ? ' · MEI ' + esc(t.cnpj_mei) : ''}</div>
-        ${conf ? `<div class="aviso">Já escalado no turno ${esc(conf.turno)} · ${reqNum(conf.requisicao_id)}</div>` : ''}${semPreco ? '<div class="aviso">Empresa sem preço para esta função/turno</div>' : ''}</div>
-        <div class="lado">${p ? `<span class="mono">${brl(p.valor)}</span>` : ''}<button class="btn peq ${conf || semPreco ? '' : 'primario'}" type="button" data-add="${t.id}" ${conf || semPreco ? 'disabled' : ''}>Adicionar</button></div></div>`;
-    }).join('') : `<div class="vazio">Nenhum trabalhador disponível nesta função.${isAdmin() ? ' <a href="#trabalhadores">Cadastrar trabalhador</a>.' : ''}</div>`;
+        ${conf ? `<div class="aviso">Já escalado no turno ${esc(conf.turno)} · ${reqNum(conf.requisicao_id)}</div>` : ''}${semPreco ? `<div class="aviso">${semPrecoTxt()}</div>` : ''}</div>
+        <div class="lado">${p != null ? `<span class="mono">${brl(p)}</span>` : ''}<button class="btn peq ${conf || semPreco ? '' : 'primario'}" type="button" data-add="${t.id}" ${conf || semPreco ? 'disabled' : ''}>Adicionar</button></div></div>`;
+    }).join('') : `<div class="vazio">Nenhum trabalhador disponível nesta função${hr.on ? ' com horário digitado' : ''}.${isAdmin() ? ' <a href="#trabalhadores">Cadastrar trabalhador</a>.' : ''}</div>`;
     $$('[data-add]', box).forEach(b => b.onclick = async () => {
       b.disabled = true;
-      try { await DB.insert('requisicao_itens', {requisicao_id:r.id, trabalhador_id:+b.dataset.add, funcao_id:st.funcao}); toast('Trabalhador adicionado.'); vDetalhe(r.id); }
+      try { await DB.insert('requisicao_itens', {requisicao_id:r.id, trabalhador_id:+b.dataset.add, funcao_id:st.funcao, ...extra()}); toast('Trabalhador adicionado.'); vDetalhe(r.id); }
       catch (e) { toast(e.message, 1); b.disabled = false; }
     });
   };
   // Terceirizadas "por função": empresa + função + quantidade; nome de cada pessoa é opcional
-  const terc = C.empresas.filter(e => e.ativo && e.por_funcao).sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
-  if (!terc.some(e => e.id === st.emp)) st.emp = terc[0] && terc[0].id;
+  const tercTodas = C.empresas.filter(e => e.ativo && e.por_funcao).sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
   st.qtd = st.qtd || 1;
   const nomeFuncao = () => (byId('funcoes', st.funcao) || {}).nome || '';
   const desenharTerc = () => {
     const el = $('#t-box', box); if (!el) return;
-    const p = veValores() && st.emp ? precoVigente(st.emp, st.funcao, r.turno_id, r.tipo_dia, r.data) : null;
+    const terc = tercTodas.filter(e => !hr.on || e.aceita_hora);
+    if (!terc.some(e => e.id === st.emp)) st.emp = terc[0] && terc[0].id;
+    if (!terc.length) { el.innerHTML = '<span class="muted" style="font-size:.88rem">Nenhuma terceirizada aceita horário digitado.</span>'; return; }
+    const pv = preco(st.emp), p = pv != null ? {valor:pv} : null;
     const semPreco = veValores() && st.emp && !p;
     const nomes = $$('[data-tn]', el).map(i => i.value);
     el.innerHTML = `
@@ -1305,7 +1340,7 @@ async function painelAdicionar(r, itens){
         <div class="campo" style="max-width:120px;flex:0 1 120px"><label for="t-qtd">Quantidade</label><input id="t-qtd" type="number" min="1" max="30" value="${st.qtd}" inputmode="numeric"></div>
         <div class="campo" style="flex:0 0 auto;min-width:0"><span class="muted" style="font-size:.85rem;padding-bottom:10px">${esc(nomeFuncao())}${p ? ` · <span class="mono">${brl(p.valor)}</span> cada` : ''}</span></div>
       </div>
-      ${semPreco ? '<div class="aviso">Esta empresa não tem preço para esta função/turno.</div>' : ''}
+      ${semPreco ? `<div class="aviso">${semPrecoTxt()}.</div>` : ''}
       <div class="grade" style="grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:8px">${Array.from({length:st.qtd}, (_, k) => `
         <div class="campo"><label for="t-n${k}">Nome ${k + 1} (opcional)</label><input id="t-n${k}" data-tn value="${esc(nomes[k] || '')}" autocomplete="off"></div>`).join('')}</div>
       <div><button class="btn primario" type="button" id="t-add" ${semPreco || !st.emp ? 'disabled' : ''}>Adicionar ${st.qtd} ${esc(nomeFuncao().toLowerCase())}${st.qtd > 1 ? ' (cada um é uma diária)' : ''}</button></div>`;
@@ -1313,7 +1348,7 @@ async function painelAdicionar(r, itens){
     $('#t-qtd', el).onchange = e => { st.qtd = Math.min(30, Math.max(1, parseInt(e.target.value, 10) || 1)); desenharTerc(); };
     $('#t-add', el).onclick = async ev => {
       ev.target.disabled = true;
-      const linhas = $$('[data-tn]', el).map(i => ({requisicao_id:r.id, trabalhador_id:null, empresa_id:st.emp, funcao_id:st.funcao, nome_trabalhador:i.value.trim() || null}));
+      const linhas = $$('[data-tn]', el).map(i => ({requisicao_id:r.id, trabalhador_id:null, empresa_id:st.emp, funcao_id:st.funcao, nome_trabalhador:i.value.trim() || null, ...extra()}));
       try { await DB.insert('requisicao_itens', linhas); st.qtd = 1; toast(`${linhas.length} ${linhas.length > 1 ? 'diárias adicionadas' : 'diária adicionada'}.`); vDetalhe(r.id); }
       catch (e) { toast(e.message, 1); ev.target.disabled = false; }
     };
@@ -1321,12 +1356,26 @@ async function painelAdicionar(r, itens){
   box.innerHTML = `<div class="cab-p"><h2>Adicionar trabalhadores</h2><span class="muted" style="font-size:.85rem">Turno <span class="turno">${esc(r.turno)}</span> · ${fdata(r.data)}</span></div>
     <div style="display:grid;gap:12px">
       <div class="chips" role="group" aria-label="Função">${funcoes.map(f => `<button type="button" class="chip" data-f="${f.id}" aria-pressed="${f.id === st.funcao}">${esc(f.nome)}</button>`).join('')}</div>
-      ${terc.length ? `<div class="nota" style="display:grid;gap:10px;padding:14px"><h3 style="font-size:.95rem">Terceirizadas por função</h3><div id="t-box" style="display:grid;gap:10px"></div></div>
+      ${empHora.length ? `<div class="filtros" style="align-items:center">
+        <label class="check"><input type="checkbox" id="h-on" ${hr.on ? 'checked' : ''}> Horário diferente do turno</label>
+        <span id="h-camp" style="display:${hr.on ? 'contents' : 'none'}">
+          <div class="campo" style="max-width:110px;flex:0 1 110px"><label for="h-ini">Das</label><select id="h-ini">${Array.from({length:24}, (_, h) => `<option value="${h}" ${h === hr.ini ? 'selected' : ''}>${pad(h)}h</option>`).join('')}</select></div>
+          <div class="campo" style="max-width:110px;flex:0 1 110px"><label for="h-fim">Às</label><select id="h-fim">${Array.from({length:24}, (_, h) => `<option value="${h}" ${h === hr.fim ? 'selected' : ''}>${pad(h)}h</option>`).join('')}</select></div>
+          <span class="muted" id="h-tot" style="font-size:.85rem"></span></span>
+        <span class="muted" style="font-size:.8rem;flex-basis:100%">Só para ${esc(empHora.map(e => e.nome).join(', '))}: cobra o valor por hora da Tabela de preços.</span></div>` : ''}
+      ${tercTodas.length ? `<div class="nota" style="display:grid;gap:10px;padding:14px"><h3 style="font-size:.95rem">Terceirizadas por função</h3><div id="t-box" style="display:grid;gap:10px"></div></div>
       <h3 style="font-size:.95rem;margin-top:4px">Trabalhadores cadastrados</h3>` : ''}
       <div class="campo"><label for="a-busca">Buscar por nome ou empresa</label><input id="a-busca" type="search" value="${esc(st.busca)}" placeholder="Digite para filtrar"></div>
       <div class="lista-trab" id="a-lista"></div></div>`;
   $$('[data-f]', box).forEach(b => b.onclick = () => { st.funcao = +b.dataset.f; $$('[data-f]', box).forEach(x => x.setAttribute('aria-pressed', x === b)); desenhar(); desenharTerc(); });
   $('#a-busca', box).oninput = e => { st.busca = e.target.value; desenhar(); };
+  const totHora = () => { const t = $('#h-tot', box); if (t) t.textContent = horasDig() ? `= ${horasDig()} horas` : 'início e fim iguais'; };
+  if ($('#h-on', box)) {
+    $('#h-on', box).onchange = e => { hr.on = e.target.checked; $('#h-camp', box).style.display = hr.on ? 'contents' : 'none'; desenhar(); desenharTerc(); };
+    $('#h-ini', box).onchange = e => { hr.ini = +e.target.value; totHora(); desenhar(); desenharTerc(); };
+    $('#h-fim', box).onchange = e => { hr.fim = +e.target.value; totHora(); desenhar(); desenharTerc(); };
+    totHora();
+  }
   desenhar(); desenharTerc();
 }
 
@@ -1334,9 +1383,9 @@ async function painelAdicionar(r, itens){
 function exportarCSV(itens, nome){
   if (!itens.length) { toast('Nada para exportar nesse filtro.', 1); return; }
   const adm = veValores();
-  const cab = ['Requisição','Data','Dia da semana','Tipo de dia','Turno','Horas','Navio','Viagem','Armazém','Trabalhador','CNPJ MEI','Função','Empresa','Supervisor','Situação'].concat(adm ? ['Valor','Fechamento'] : []);
+  const cab = ['Requisição','Data','Dia da semana','Tipo de dia','Turno','Horário próprio','Horas','Navio','Viagem','Armazém','Trabalhador','CNPJ MEI','Função','Empresa','Supervisor','Situação'].concat(adm ? ['Valor','Fechamento'] : []);
   const q = v => { const s = String(v ?? ''); return /[;"\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
-  const linhas = [...itens].sort((a, b) => a.data.localeCompare(b.data) || a.requisicao_id - b.requisicao_id).map(i => [reqNum(i.requisicao_id), fdata(i.data), DIAS[dow(i.data)], TIPO_DIA[i.tipo_dia], i.turno, i.horas, i.navio, i.viagem, i.armazem, i.trabalhador, i.cnpj_mei, i.funcao, i.empresa, i.supervisor, STATUS[i.status]]
+  const linhas = [...itens].sort((a, b) => a.data.localeCompare(b.data) || a.requisicao_id - b.requisicao_id).map(i => [reqNum(i.requisicao_id), fdata(i.data), DIAS[dow(i.data)], TIPO_DIA[i.tipo_dia], i.turno, i.hora_inicio != null ? `${pad(i.hora_inicio)}h às ${pad(i.hora_fim)}h` : '', i.horas, i.navio, i.viagem, i.armazem, i.trabalhador, i.cnpj_mei, i.funcao, i.empresa, i.supervisor, STATUS[i.status]]
     .concat(adm ? [Number(i.valor || 0).toFixed(2).replace('.', ','), i.fechamento_id ? fecNum(i.fechamento_id) : ''] : []).map(q).join(';'));
   const blob = new Blob(['﻿' + [cab.join(';')].concat(linhas).join('\r\n')], {type:'text/csv;charset=utf-8'});
   const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = nome; document.body.appendChild(a); a.click();
@@ -1347,8 +1396,8 @@ function exportarCSV(itens, nome){
 /* ------------------------- Cadastros genéricos ------------------------- */
 const CRUD = {
   empresas:{titulo:'Empresas fornecedoras', sub:'Quem fornece a mão de obra e o que está incluso no preço', tabela:'empresas',
-    campos:[{k:'nome',l:'Nome',req:1,upper:1},{k:'cnpj',l:'CNPJ'},{k:'contato',l:'Contato'},{k:'telefone',l:'Telefone'},{k:'email',l:'E-mail',type:'email'},{k:'fornece_epi',l:'Fornece EPI',type:'bool'},{k:'fornece_lanche',l:'Fornece lanche',type:'bool'},{k:'por_funcao',l:'Requisição por função (terceirizada: sem cadastro de cada trabalhador)',type:'bool'},{k:'observacao',l:'Observação',type:'area'},{k:'ativo',l:'Ativa',type:'bool',def:true}],
-    cols:[['nome','Empresa'],['cnpj','CNPJ'],['contato','Contato'],['telefone','Telefone'],['fornece_epi','EPI','sn'],['fornece_lanche','Lanche','sn'],['por_funcao','Por função','sn'],['ativo','Situação','ativo']]},
+    campos:[{k:'nome',l:'Nome',req:1,upper:1},{k:'cnpj',l:'CNPJ'},{k:'contato',l:'Contato'},{k:'telefone',l:'Telefone'},{k:'email',l:'E-mail',type:'email'},{k:'fornece_epi',l:'Fornece EPI',type:'bool'},{k:'fornece_lanche',l:'Fornece lanche',type:'bool'},{k:'por_funcao',l:'Requisição por função (terceirizada: sem cadastro de cada trabalhador)',type:'bool'},{k:'aceita_hora',l:'Aceita horário digitado na requisição (cobra valor por hora da Tabela de preços)',type:'bool'},{k:'observacao',l:'Observação',type:'area'},{k:'ativo',l:'Ativa',type:'bool',def:true}],
+    cols:[['nome','Empresa'],['cnpj','CNPJ'],['contato','Contato'],['telefone','Telefone'],['fornece_epi','EPI','sn'],['fornece_lanche','Lanche','sn'],['por_funcao','Por função','sn'],['aceita_hora','Por hora','sn'],['ativo','Situação','ativo']]},
   navios:{titulo:'Navios', sub:'Toda requisição é vinculada a um navio. Cadastro: administrador e financeiro.', tabela:'navios', finIns:1,
     campos:[{k:'nome',l:'Nome do navio',req:1,upper:1,ph:'Ex.: NAVIO TESTE 1'},{k:'viagem',l:'Viagem',ph:'Ex.: 026N'},{k:'eta',l:'ETA',type:'date'},{k:'observacao',l:'Observação',type:'area'},{k:'ativo',l:'Ativo (aparece para seleção)',type:'bool',def:true}],
     cols:[['nome','Navio'],['viagem','Viagem'],['eta','ETA','data'],['observacao','Observação'],['ativo','Situação','ativo']]},
@@ -1466,7 +1515,7 @@ async function vPrecos(){
   const desenhar = () => {
     $('#pr-corpo').innerHTML = C.funcoes.filter(f => f.ativo).map(f => `<section class="painel"><h2>${esc(f.nome)}</h2><div class="tab-wrap"><table class="tab matriz"><thead><tr><th>Turno</th>${emps.map(e => `<th class="num">${esc(e.nome)}</th>`).join('')}</tr></thead><tbody>
       ${C.turnos.filter(t => t.ativo).map(t => { const vs = emps.map(e => precoVigente(e.id, f.id, t.id, st.tipo, st.ref)); const mn = Math.min(...vs.filter(Boolean).map(p => +p.valor));
-        return `<tr><td><span class="turno">${esc(t.codigo)}</span> <span class="muted" style="font-size:.8rem">${t.horas}h</span></td>${emps.map((e, k) => vs[k] ? `<td class="cel ${+vs[k].valor === mn ? 'min' : ''}" data-c="${e.id}|${f.id}|${t.id}" ${isAdmin() ? 'tabindex="0"' : ''}>${brl(vs[k].valor)}</td>` : `<td class="cel nada" data-c="${e.id}|${f.id}|${t.id}" ${isAdmin() ? 'tabindex="0"' : ''}>—</td>`).join('')}</tr>`; }).join('')}
+        return `<tr><td><span class="turno">${esc(t.codigo)}</span> <span class="muted" style="font-size:.8rem">${t.por_hora ? 'valor da hora · horário digitado' : t.horas + 'h'}</span></td>${emps.map((e, k) => vs[k] ? `<td class="cel ${+vs[k].valor === mn ? 'min' : ''}" data-c="${e.id}|${f.id}|${t.id}" ${isAdmin() ? 'tabindex="0"' : ''}>${brl(vs[k].valor)}</td>` : `<td class="cel nada" data-c="${e.id}|${f.id}|${t.id}" ${isAdmin() ? 'tabindex="0"' : ''}>—</td>`).join('')}</tr>`; }).join('')}
       </tbody></table></div></section>`).join('');
     if (isAdmin()) $$('#pr-corpo [data-c]').forEach(td => { td.onclick = () => editar(...td.dataset.c.split('|').map(Number)); td.onkeydown = e => { if (e.key === 'Enter') td.click(); }; });
   };
@@ -1475,7 +1524,7 @@ async function vPrecos(){
     const hist = C.tabela_precos.filter(p => p.empresa_id === emp && p.funcao_id === fun && p.turno_id === tur && p.tipo_dia === st.tipo).sort((a, b) => b.vigencia_inicio.localeCompare(a.vigencia_inicio));
     modal(`${byId('empresas', emp).nome} · ${byId('funcoes', fun).nome}`, `
       <p class="muted" style="margin:0">Turno <span class="turno">${esc(byId('turnos', tur).codigo)}</span> · ${TIPO_DIA[st.tipo]}</p>
-      <div class="grade"><div class="campo"><label for="pv-v">Valor da diária (R$)</label><input id="pv-v" type="number" step="0.01" min="0" value="${atual ? atual.valor : ''}" placeholder="Em branco = não fornece"></div>
+      <div class="grade"><div class="campo"><label for="pv-v">${byId('turnos', tur).por_hora ? 'Valor por hora (R$)' : 'Valor da diária (R$)'}</label><input id="pv-v" type="number" step="0.01" min="0" value="${atual ? atual.valor : ''}" placeholder="Em branco = não fornece"></div>
       <div class="campo"><label for="pv-d">Vale a partir de</label><input id="pv-d" type="date" value="${atual ? (atual.vigencia_inicio > st.ref ? atual.vigencia_inicio : st.ref) : st.ref}"></div></div>
       <p class="muted" style="margin:0;font-size:.82rem">Se a data for posterior ao início da vigência atual, a vigência atual é encerrada no dia anterior e uma nova é criada. Na mesma data, o valor é corrigido.</p>
       ${hist.length ? `<div><span class="rot">Histórico</span><div class="tab-wrap" style="margin-top:6px"><table class="tab"><thead><tr><th>Início</th><th>Fim</th><th class="num">Valor</th></tr></thead><tbody>${hist.map(p => `<tr><td>${fdata(p.vigencia_inicio)}</td><td>${p.vigencia_fim ? fdata(p.vigencia_fim) : 'atual'}</td><td class="num">${brl(p.valor)}</td></tr>`).join('')}</tbody></table></div></div>` : ''}`, {

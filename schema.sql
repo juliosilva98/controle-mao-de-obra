@@ -225,6 +225,15 @@ alter table public.requisicao_itens drop constraint if exists ck_item_origem;
 alter table public.requisicao_itens add constraint ck_item_origem
   check (trabalhador_id is not null or empresa_id is not null);
 
+-- Horário digitado por pessoa (ex.: 07h às 17h), cobrado por hora.
+-- Só para empresas marcadas "aceita_hora"; o valor por hora fica na Tabela de preços,
+-- no turno especial "POR HORA" (que não aparece na escolha de turno da requisição).
+alter table public.empresas add column if not exists aceita_hora boolean not null default false;
+alter table public.turnos   add column if not exists por_hora boolean not null default false;
+alter table public.requisicao_itens add column if not exists hora_inicio int check (hora_inicio between 0 and 23);
+alter table public.requisicao_itens add column if not exists hora_fim    int check (hora_fim between 0 and 23);
+-- (o turno "POR HORA" é criado na seção 9, depois dos turnos padrão)
+
 -- ---------------------------------------------------------------------
 -- 4b. FECHAMENTOS (FINANCEIRO): lote de diárias aprovadas de um fornecedor x período
 -- ---------------------------------------------------------------------
@@ -313,6 +322,9 @@ returns trigger language plpgsql security definer set search_path = public as $$
 begin
   new.tipo_dia := public.fn_tipo_dia(new.data);
   new.atualizado_em := now();
+  if coalesce((select por_hora from public.turnos where id = new.turno_id), false) then
+    raise exception 'O turno "por hora" não é usado na requisição; escolha o turno e informe o horário na pessoa.';
+  end if;
 
   if tg_op = 'INSERT' then
     new.status := 'ABERTA';
@@ -432,24 +444,42 @@ begin
     select nome into v_quem from public.empresas where id = tb.empresa_id;
   end if;
 
-  new.horas := t.horas;
-
-  select p.valor into v_valor
-    from public.tabela_precos p
-   where p.empresa_id = new.empresa_id and p.funcao_id = new.funcao_id
-     and p.turno_id = r.turno_id and p.tipo_dia = r.tipo_dia
-     and r.data >= p.vigencia_inicio and (p.vigencia_fim is null or r.data <= p.vigencia_fim);
-
-  if v_valor is null then
-    raise exception 'Sem preço cadastrado para a empresa % nesta função/turno (%).', v_quem,
-      case r.tipo_dia when 'DOM_FER' then 'domingo/feriado' else 'dia útil' end;
+  if new.hora_inicio is null and new.hora_fim is null then
+    -- turno da requisição: preço do turno
+    new.horas := t.horas;
+    select p.valor into v_valor
+      from public.tabela_precos p
+     where p.empresa_id = new.empresa_id and p.funcao_id = new.funcao_id
+       and p.turno_id = r.turno_id and p.tipo_dia = r.tipo_dia
+       and r.data >= p.vigencia_inicio and (p.vigencia_fim is null or r.data <= p.vigencia_fim);
+    if v_valor is null then
+      raise exception 'Sem preço cadastrado para a empresa % nesta função/turno (%).', v_quem,
+        case r.tipo_dia when 'DOM_FER' then 'domingo/feriado' else 'dia útil' end;
+    end if;
+  else
+    -- horário digitado: horas × valor por hora da empresa
+    if new.hora_inicio is null or new.hora_fim is null then raise exception 'Informe a hora de início e a de fim.'; end if;
+    if not coalesce((select aceita_hora from public.empresas where id = new.empresa_id), false) then
+      raise exception 'A empresa % não trabalha com horário digitado; use o turno da requisição.', v_quem;
+    end if;
+    new.horas := (new.hora_fim - new.hora_inicio + 24) % 24;
+    if new.horas = 0 then raise exception 'A hora de fim deve ser diferente da de início.'; end if;
+    select p.valor * new.horas into v_valor
+      from public.tabela_precos p join public.turnos tp on tp.id = p.turno_id and tp.por_hora
+     where p.empresa_id = new.empresa_id and p.funcao_id = new.funcao_id and p.tipo_dia = r.tipo_dia
+       and r.data >= p.vigencia_inicio and (p.vigencia_fim is null or r.data <= p.vigencia_fim)
+     limit 1;
+    if v_valor is null then
+      raise exception 'Sem valor por hora cadastrado para a empresa % nesta função (%).', v_quem,
+        case r.tipo_dia when 'DOM_FER' then 'domingo/feriado' else 'dia útil' end;
+    end if;
   end if;
-  new.valor_unitario := v_valor;
+  new.valor_unitario := round(v_valor, 2);
 
   if new.trabalhador_id is null then return new; end if;
 
-  v_ini := public.fn_inicio_operacional(t.hora_inicio);
-  v_fim := v_ini + t.horas;
+  v_ini := public.fn_inicio_operacional(coalesce(new.hora_inicio, t.hora_inicio));
+  v_fim := v_ini + new.horas;
 
   select t2.codigo into v_conflito
     from public.requisicao_itens i2
@@ -459,8 +489,8 @@ begin
      and i2.id <> coalesce(new.id, -1)
      and r2.data = r.data
      and r2.status <> 'CANCELADA'
-     and public.fn_inicio_operacional(t2.hora_inicio) < v_fim
-     and v_ini < public.fn_inicio_operacional(t2.hora_inicio) + t2.horas
+     and public.fn_inicio_operacional(coalesce(i2.hora_inicio, t2.hora_inicio)) < v_fim
+     and v_ini < public.fn_inicio_operacional(coalesce(i2.hora_inicio, t2.hora_inicio)) + i2.horas
    limit 1;
 
   if v_conflito is not null then
@@ -628,7 +658,8 @@ select i.id, i.requisicao_id, r.data, r.tipo_dia, r.status,
        i.fechamento_id,
        case when r.numero is not null then r.numero_ano || '/' || lpad(r.numero::text, 4, '0') end as numero_fmt,
        i.nome_trabalhador,
-       (i.trabalhador_id is null) as por_funcao
+       (i.trabalhador_id is null) as por_funcao,
+       i.hora_inicio, i.hora_fim
   from public.requisicao_itens i
   join public.requisicoes   r  on r.id  = i.requisicao_id
   join public.turnos        t  on t.id  = r.turno_id
@@ -774,7 +805,7 @@ grant execute on function public.meu_perfil(), public.is_admin(), public.is_ativ
 
 -- O valor do item não é legível direto na tabela: leitura de valores só pelas views
 revoke select on public.requisicao_itens from anon, authenticated;
-grant select (id, requisicao_id, trabalhador_id, funcao_id, empresa_id, horas, observacao, criado_em, fechamento_id, nome_trabalhador)
+grant select (id, requisicao_id, trabalhador_id, funcao_id, empresa_id, horas, observacao, criado_em, fechamento_id, nome_trabalhador, hora_inicio, hora_fim)
   on public.requisicao_itens to authenticated;
 revoke insert, delete on public.fechamentos from anon, authenticated;
 revoke all on public.vw_requisicoes, public.vw_itens, public.vw_fechamentos, public.vw_auditoria from anon;
@@ -800,6 +831,12 @@ select * from (values
   ('07x19', '07h às 19h (12h diurno)',  7, 12, 'DIURNO'),
   ('19x07', '19h às 07h (12h noturno)',19, 12, 'NOTURNO')) v(codigo, descricao, hora_inicio, horas, periodo)
 where not exists (select 1 from public.turnos)
+on conflict (codigo) do nothing;
+
+-- Turno especial para o valor por hora (horário digitado); não aparece na requisição
+insert into public.turnos (codigo, descricao, hora_inicio, horas, periodo, por_hora)
+select 'POR HORA', 'Valor por hora (horário digitado na requisição)', 0, 1, 'DIURNO', true
+where not exists (select 1 from public.turnos where por_hora)
 on conflict (codigo) do nothing;
 
 insert into public.armazens (nome)
