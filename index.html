@@ -234,6 +234,10 @@ table.tab{width:100%;border-collapse:collapse;font-size:.9rem}
 .grupo-func{margin-top:6px}
 .grupo-func h3{font-size:.8rem;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:14px 0 6px}
 .lista-trab{display:grid;gap:6px}
+.sub-forn{font-size:.8rem;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:4px 0 8px}
+.det-forn{margin-top:16px}
+.det-forn summary{cursor:pointer;font-weight:600;padding:8px 0;color:var(--accent)}
+.det-forn[open] summary{margin-bottom:6px}
 .btn.concluir{background:#1E8A4C;border-color:#1E8A4C;color:#fff;font-weight:700;box-shadow:0 2px 10px rgba(30,138,76,.35)}
 .btn.concluir:hover{background:#176F3D;border-color:#176F3D;color:#fff;box-shadow:0 4px 14px rgba(30,138,76,.45)}
 /* nome à esquerda; valor e botões à direita, descendo para a linha de baixo quando não cabem (celular) */
@@ -914,7 +918,7 @@ function telaLogin(){
 /* ------------------------------- Shell ------------------------------- */
 // [rota, título, perfis que veem] — sem perfis = todos
 const MENU = [
-  ['Operação', [['painel','Painel',[A,F]],['requisicoes','Requisições'],['nova','Nova requisição',[A,S_]]]],
+  ['Operação', [['painel','Painel',[A,F]],['fornecedores','Por fornecedor',[A,F]],['requisicoes','Requisições'],['nova','Nova requisição',[A,S_]]]],
   ['Financeiro', [['fechamentos','Fechamentos',[A,F]]]],
   ['Recursos Humanos', [['horas','Horas extras Seatrade',[A,RH_]]]],
   ['Cadastros', [['trabalhadores','Trabalhadores',[A,F]],['empresas','Empresas',[A,F]],['precos','Tabela de preços',[A,F]],['navios','Navios'],['armazens','Armazéns',[A]],['funcoes','Funções',[A]],['turnos','Turnos',[A]],['feriados','Feriados',[A,F]]]],
@@ -964,7 +968,7 @@ function alternarMenu(abrir){
   if (!abrir && v) v.remove();
 }
 const ROTAS = {
-  painel:{t:'Painel', p:[A,F], fn:() => vPainel()}, requisicoes:{t:'Requisições', fn:() => vRequisicoes()}, nova:{t:'Nova requisição', p:[A,S_], fn:() => vNova()},
+  painel:{t:'Painel', p:[A,F], fn:() => vPainel()}, fornecedores:{t:'Requisições por fornecedor', p:[A,F], fn:() => vFornecedores()}, requisicoes:{t:'Requisições', fn:() => vRequisicoes()}, nova:{t:'Nova requisição', p:[A,S_], fn:() => vNova()},
   fechamentos:{t:'Fechamentos', p:[A,F], fn:() => vFechamentos()},
   trabalhadores:{t:'Trabalhadores', p:[A,F], fn:() => vTrabalhadores()}, precos:{t:'Tabela de preços', p:[A,F], fn:() => vPrecos()},
   empresas:{t:'Empresas', p:[A,F], fn:() => vCrud('empresas')}, navios:{t:'Navios', fn:() => vCrud('navios')}, armazens:{t:'Armazéns', p:[A], fn:() => vCrud('armazens')},
@@ -1065,7 +1069,7 @@ async function vPainel(){
     const pendV = I.filter(i => i.status === 'ABERTA').reduce((s, i) => s + Number(i.valor || 0), 0);
     const navios = new Set(I.map(i => i.navio_id));
     const semFech = I.filter(i => i.status === 'APROVADA' && !i.fechamento_id), aFechar = semFech.reduce((s, i) => s + Number(i.valor || 0), 0), aFecharN = semFech.length;
-    const agrupar = (chave, nome) => { const m = new Map(); for (const i of I) { const k = i[chave]; const g = m.get(k) || {nome:i[nome], v:0, hh:0, n:0, reqs:new Set(), util:0, dom:0}; g.v += Number(i.valor || 0); g.hh += i.horas; g.n++; g.reqs.add(i.requisicao_id); g[i.tipo_dia === 'DOM_FER' ? 'dom' : 'util'] += Number(i.valor || 0); m.set(k, g); } return [...m.values()].sort((a, b) => b.v - a.v); };
+    const agrupar = (chave, nome) => { const m = new Map(); for (const i of I) { const k = i[chave]; const g = m.get(k) || {id:k, nome:i[nome], v:0, hh:0, n:0, reqs:new Set(), util:0, dom:0}; g.v += Number(i.valor || 0); g.hh += i.horas; g.n++; g.reqs.add(i.requisicao_id); g[i.tipo_dia === 'DOM_FER' ? 'dom' : 'util'] += Number(i.valor || 0); m.set(k, g); } return [...m.values()].sort((a, b) => b.v - a.v); };
     const barras = l => { const mx = Math.max(...l.map(x => x.v), 1); return l.length ? `<div class="barras">${l.map(x => `<div class="barra"><span class="nome">${esc(x.nome)}</span><span class="val">${brl(x.v)}</span><span class="trilho"><i style="width:${(x.v / mx * 100).toFixed(1)}%"></i></span><span class="sub">${n0(x.n)} diárias · ${n0(x.hh)} HH${total ? ' · ' + (x.v / total * 100).toFixed(1).replace('.', ',') + '%' : ''}</span></div>`).join('')}</div>` : '<div class="vazio">Sem lançamentos no período.</div>'; };
     const porEmp = agrupar('empresa_id', 'empresa'), porNav = agrupar('navio_id', 'navio');
     $('#p-corpo').innerHTML = `
@@ -1079,7 +1083,7 @@ async function vPainel(){
       </div>
       <section class="painel"><div class="cab-p"><h2>Fechamento por fornecedor</h2><span class="muted" style="font-size:.85rem">Base para conferir a nota fiscal de cada empresa</span></div>
         <div class="tab-wrap"><table class="tab"><thead><tr><th>Empresa</th><th class="num">Diárias</th><th class="num">HH</th><th class="num">Dia útil</th><th class="num">Dom/feriado</th><th class="num">Total</th></tr></thead>
-        <tbody>${porEmp.map(g => `<tr><td>${esc(g.nome)}</td><td class="num">${n0(g.n)}</td><td class="num">${n0(g.hh)}</td><td class="num">${brl(g.util)}</td><td class="num">${brl(g.dom)}</td><td class="num"><b>${brl(g.v)}</b></td></tr>`).join('') || '<tr><td colspan="6" class="vazio">Sem lançamentos no período.</td></tr>'}</tbody>
+        <tbody>${porEmp.map(g => `<tr class="click" data-emp="${g.id}" title="Ver requisições, navios e locais"><td><a href="#fornecedores" data-emp="${g.id}">${esc(g.nome)}</a></td><td class="num">${n0(g.n)}</td><td class="num">${n0(g.hh)}</td><td class="num">${brl(g.util)}</td><td class="num">${brl(g.dom)}</td><td class="num"><b>${brl(g.v)}</b></td></tr>`).join('') || '<tr><td colspan="6" class="vazio">Sem lançamentos no período.</td></tr>'}</tbody>
         ${porEmp.length ? `<tfoot><tr><td>Total</td><td class="num">${n0(I.length)}</td><td class="num">${n0(hh)}</td><td class="num">${brl(total - domfer)}</td><td class="num">${brl(domfer)}</td><td class="num">${brl(total)}</td></tr></tfoot>` : ''}</table></div></section>
       <section class="painel"><div class="cab-p"><h2>Custo por navio</h2><span class="muted" style="font-size:.85rem">Para o resultado por escala</span></div>
         <div class="tab-wrap"><table class="tab"><thead><tr><th>Navio</th><th class="num">Requisições</th><th class="num">Diárias</th><th class="num">HH</th><th class="num">Custo/HH</th><th class="num">Total</th></tr></thead>
@@ -1090,6 +1094,55 @@ async function vPainel(){
         <section class="painel"><h2>Por turno</h2>${barras(agrupar('turno_id', 'turno'))}</section>
         <section class="painel"><h2>Por supervisor</h2>${barras(agrupar('supervisor_id', 'supervisor'))}</section>
       </div>`;
+    // clicar no fornecedor abre a consulta dele no mesmo período
+    $$('#p-corpo [data-emp]').forEach(el => el.onclick = e => { e.preventDefault();
+      estado.forn = {...(estado.forn || {}), de:f.de, ate:f.ate, soAprov:f.soAprov, emp:el.dataset.emp}; location.hash = 'fornecedores'; });
+  }
+  await desenhar();
+}
+
+/* ----------------------- Requisições por fornecedor ----------------------- */
+// Para cada fornecedor: em quais navios e locais trabalhou e a lista das requisições (só ADMIN/FINANCEIRO)
+async function vFornecedores(){
+  const f = estado.forn || (estado.forn = {de:inicioMes(), ate:hoje(), soAprov:false, emp:''});
+  const terceiros = C.empresas.filter(e => !e.propria).sort((a, b) => a.nome.localeCompare(b.nome));
+  pagina('Requisições por fornecedor', 'Onde cada empresa trabalhou, em quais navios e em quais requisições', `<button class="btn" id="fo-exp" type="button">Baixar CSV</button>`, `
+    <div class="filtros painel">
+      <div class="campo"><label for="fo-de">De</label><input type="date" id="fo-de" value="${f.de}"></div>
+      <div class="campo"><label for="fo-ate">Até</label><input type="date" id="fo-ate" value="${f.ate}"></div>
+      <div class="campo"><label for="fo-emp">Fornecedor</label><select id="fo-emp"><option value="">Todos</option>${terceiros.map(e => `<option value="${e.id}" ${String(f.emp) === String(e.id) ? 'selected' : ''}>${esc(e.nome)}</option>`).join('')}</select></div>
+      <label class="check" style="padding-bottom:9px"><input type="checkbox" id="fo-ap" ${f.soAprov ? 'checked' : ''}> Somente aprovadas</label>
+    </div><div id="fo-corpo" style="display:grid;gap:20px;grid-template-columns:minmax(0,1fr)"><div class="carregando">Carregando…</div></div>`);
+  const ler = () => { f.de = $('#fo-de').value || inicioMes(); f.ate = $('#fo-ate').value || hoje(); f.emp = $('#fo-emp').value; f.soAprov = $('#fo-ap').checked; desenhar(); };
+  ['#fo-de','#fo-ate','#fo-emp','#fo-ap'].forEach(s => $(s).onchange = ler);
+  let atuais = [];
+  $('#fo-exp').onclick = () => exportarCSV(atuais, `fornecedores_${f.de}_a_${f.ate}.csv`);
+  const soma = l => l.reduce((s, i) => s + Number(i.valor || 0), 0), horas = l => l.reduce((s, i) => s + i.horas, 0);
+  const grupos = (l, chave) => { const m = new Map(); for (const i of l) { const k = chave(i); m.set(k, [...(m.get(k) || []), i]); } return [...m.entries()]; };
+  async function desenhar(){
+    const itens = await DB.list('vw_itens', {gte:{data:f.de}, lte:{data:f.ate}});
+    atuais = itens.filter(i => i.status !== 'CANCELADA' && (!f.soAprov || i.status === 'APROVADA') && !byId('empresas', i.empresa_id).propria && (!f.emp || String(i.empresa_id) === String(f.emp)));
+    const porEmp = grupos(atuais, i => i.empresa_id).map(([id, l]) => ({id, nome:l[0].empresa, l, v:soma(l)})).sort((a, b) => b.v - a.v);
+    if (!porEmp.length) { $('#fo-corpo').innerHTML = '<section class="painel"><div class="vazio">Nenhuma requisição deste fornecedor no período.</div></section>'; return; }
+    $('#fo-corpo').innerHTML = porEmp.map(g => {
+      const reqs = grupos(g.l, i => i.requisicao_id).map(([rid, l]) => ({rid, i:l[0], l})).sort((a, b) => b.i.data.localeCompare(a.i.data) || b.rid - a.rid);
+      const navios = grupos(g.l, i => i.navio_id).map(([, l]) => ({nome:l[0].navio + (l[0].viagem ? ' · ' + l[0].viagem : ''), l})).sort((a, b) => soma(b.l) - soma(a.l));
+      const locais = grupos(g.l, i => i.armazem_id).map(([, l]) => ({nome:l[0].armazem, l})).sort((a, b) => soma(b.l) - soma(a.l));
+      const linhaGrupo = x => `<tr><td>${esc(x.nome)}</td><td class="num">${n0(new Set(x.l.map(i => i.requisicao_id)).size)}</td><td class="num">${n0(x.l.length)}</td><td class="num">${n0(horas(x.l))}</td><td class="num"><b>${brl(soma(x.l))}</b></td></tr>`;
+      const cab = t => `<thead><tr><th>${t}</th><th class="num">Requisições</th><th class="num">Diárias</th><th class="num">HH</th><th class="num">Total</th></tr></thead>`;
+      return `<section class="painel">
+        <div class="cab-p"><h2>${esc(g.nome)}</h2><div class="totais"><span><b>${n0(reqs.length)}</b> ${reqs.length === 1 ? 'requisição' : 'requisições'}</span><span><b>${n0(g.l.length)}</b> ${g.l.length === 1 ? 'diária' : 'diárias'}</span><span><b>${n0(horas(g.l))}</b> HH</span><span>Total <b>${brl(g.v)}</b></span></div></div>
+        <div class="duas">
+          <div><h3 class="sub-forn">Navios</h3><div class="tab-wrap"><table class="tab">${cab('Navio')}<tbody>${navios.map(linhaGrupo).join('')}</tbody></table></div></div>
+          <div><h3 class="sub-forn">Locais</h3><div class="tab-wrap"><table class="tab">${cab('Armazém / local')}<tbody>${locais.map(linhaGrupo).join('')}</tbody></table></div></div>
+        </div>
+        <details class="det-forn" ${f.emp ? 'open' : ''}><summary>Requisições (${n0(reqs.length)})</summary>
+          <div class="tab-wrap"><table class="tab"><thead><tr><th>Nº</th><th>Data</th><th>Turno</th><th>Navio</th><th>Local</th><th>Funções</th><th>Situação</th><th class="num">Pessoas</th><th class="num">Valor</th></tr></thead>
+          <tbody>${reqs.map(({rid, i, l}) => `<tr class="click" data-req="${rid}"><td><a class="reqnum" href="#req-${rid}">${reqNum(rid)}</a></td><td style="white-space:nowrap">${fdata(i.data)}${i.tipo_dia === 'DOM_FER' ? ' <span class="tag DOM_FER">Dom/fer</span>' : ''}</td><td><span class="turno">${esc(i.turno)}</span></td>
+            <td>${esc(i.navio)}</td><td>${esc(i.armazem)}</td><td class="muted" style="font-size:.85rem">${grupos(l, x => x.funcao).map(([fu, ll]) => `${esc(fu)} ${ll.length}`).join(' · ')}</td>
+            <td><span class="pill ${i.status}">${STATUS[i.status]}</span></td><td class="num">${n0(l.length)}</td><td class="num"><b>${brl(soma(l))}</b></td></tr>`).join('')}</tbody></table></div>
+        </details></section>`; }).join('');
+    $$('#fo-corpo tr[data-req]').forEach(tr => tr.onclick = e => { if (e.target.tagName !== 'A') location.hash = 'req-' + tr.dataset.req; });
   }
   await desenhar();
 }
