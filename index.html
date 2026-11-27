@@ -432,6 +432,7 @@ function DemoDB(){
   const nid = t => (S.seq[t] = (S.seq[t] || 0) + 1);
   const adm = () => me && me.perfil === 'ADMIN' && me.ativo;
   const veVal = () => me && me.ativo && (me.perfil === 'ADMIN' || me.perfil === 'FINANCEIRO');
+  const veCusto = () => veVal() || !!(me && me.ativo && me.acesso_relatorios);   // mesma regra de ve_custos()
   const podeReq = () => me && me.ativo && (me.perfil === 'ADMIN' || me.perfil === 'SUPERVISOR');
   const fechada = rid => S.requisicao_itens.some(i => i.requisicao_id === rid && i.fechamento_id);
   const MSG_FECH = 'Requisição incluída em fechamento do financeiro. Desfaça o fechamento antes de alterar.';
@@ -502,7 +503,7 @@ function DemoDB(){
   function pode(t, op, row){
     if (!me || !me.ativo) return false;
     if (adm()) return true;
-    if (t === 'jornadas') return me.perfil === 'RH';
+    if (t === 'jornadas') return me.perfil === 'RH' || !!me.acesso_rh;
     if (t === 'fechamentos') return veVal() && op === 'update';
     if (t === 'navios') return op === 'insert' && me.perfil === 'FINANCEIRO';
     if (!podeReq()) return false;
@@ -527,7 +528,7 @@ function DemoDB(){
       const tu = get('turnos', r.turno_id), na = get('navios', r.navio_id), it = S.requisicao_itens.filter(i => i.requisicao_id === r.id);
       return {...r, turno:tu.codigo, periodo:tu.periodo, horas_turno:tu.horas, navio:na.nome, viagem:na.viagem, armazem:nome('armazens', r.armazem_id),
         supervisor:nome('usuarios', r.supervisor_id), aprovado_por_nome:r.aprovado_por ? nome('usuarios', r.aprovado_por) : null,
-        qtd_trabalhadores:it.length, valor_total:veVal() ? it.reduce((s, i) => s + Number(i.valor_unitario), 0) : null,
+        qtd_trabalhadores:it.length, valor_total:veCusto() ? it.reduce((s, i) => s + Number(i.valor_unitario), 0) : null,
         em_fechamento:it.some(i => i.fechamento_id), numero_fmt:fmtNumero(r)};
     });
     if (t === 'vw_fechamentos') return veVal() ? S.fechamentos.map(f => {
@@ -542,7 +543,7 @@ function DemoDB(){
       return {id:i.id, requisicao_id:r.id, data:r.data, tipo_dia:r.tipo_dia, status:r.status, turno_id:r.turno_id, turno:tu.codigo, periodo:tu.periodo, horas:i.horas,
         navio_id:r.navio_id, navio:na.nome, viagem:na.viagem, armazem_id:r.armazem_id, armazem:nome('armazens', r.armazem_id), trabalhador_id:tb ? tb.id : null, trabalhador:tb ? tb.nome : (i.nome_trabalhador || 'Nome não informado'), cnpj_mei:tb ? tb.cnpj_mei : null,
         funcao_id:i.funcao_id, funcao:nome('funcoes', i.funcao_id), empresa_id:i.empresa_id, empresa:nome('empresas', i.empresa_id), supervisor_id:r.supervisor_id,
-        supervisor:nome('usuarios', r.supervisor_id), valor:veVal() ? i.valor_unitario : null, observacao:i.observacao, fechamento_id:i.fechamento_id || null, numero_fmt:fmtNumero(r),
+        supervisor:nome('usuarios', r.supervisor_id), valor:veCusto() ? i.valor_unitario : null, observacao:i.observacao, fechamento_id:i.fechamento_id || null, numero_fmt:fmtNumero(r),
         nome_trabalhador:i.nome_trabalhador || null, por_funcao:i.trabalhador_id == null, hora_inicio:i.hora_inicio ?? null, hora_fim:i.hora_fim ?? null};
     });
   }
@@ -575,7 +576,7 @@ function DemoDB(){
       let rows;
       if (t.startsWith('vw_')) rows = visao(t);
       else if (t === 'tabela_precos' || t === 'auditoria' || t === 'fechamentos') rows = veVal() ? clone(S[t]) : [];
-      else if (t === 'jornadas') rows = ['ADMIN','RH'].includes(me.perfil) ? clone(S.jornadas || []) : [];
+      else if (t === 'jornadas') rows = ['ADMIN','RH'].includes(me.perfil) || me.acesso_rh ? clone(S.jornadas || []) : [];
       else if (t === 'usuarios') rows = clone(S.usuarios.filter(u => adm() || u.id === me.id)).map(u => (delete u.senha, u));
       else rows = clone(S[t]);
       return filtrar(rows, o);
@@ -844,7 +845,9 @@ const veValores = () => isAdmin() || isFin();
 const podeRequisitar = () => ME && (ME.perfil === 'ADMIN' || ME.perfil === 'SUPERVISOR');
 const podeCriarNavio = () => isAdmin() || isFin();
 const A = 'ADMIN', S_ = 'SUPERVISOR', F = 'FINANCEIRO', RH_ = 'RH';
-const permite = perfis => !perfis || perfis.includes(ME.perfil);
+// perfis da rota + acessos extras do usuário ('+REL' = relatórios com valores, '+RH' = horas extras)
+const permite = perfis => !perfis || perfis.includes(ME.perfil) || (perfis.includes('+REL') && !!ME.acesso_relatorios) || (perfis.includes('+RH') && !!ME.acesso_rh);
+const veCustos = () => veValores() || !!(ME && ME.acesso_relatorios);
 const byId = (t, id) => (C[t] || []).find(x => x.id === id) || {};
 const ordTurnos = l => [...l].sort((a, b) => a.horas - b.horas || inicioOp(a.hora_inicio) - inicioOp(b.hora_inicio));
 const ordNome = l => [...l].sort((a, b) => String(a.nome).localeCompare(String(b.nome), 'pt-BR'));
@@ -918,9 +921,9 @@ function telaLogin(){
 /* ------------------------------- Shell ------------------------------- */
 // [rota, título, perfis que veem] — sem perfis = todos
 const MENU = [
-  ['Operação', [['painel','Painel',[A,F]],['fornecedores','Por fornecedor',[A,F]],['requisicoes','Requisições'],['nova','Nova requisição',[A,S_]]]],
+  ['Operação', [['painel','Painel',[A,F,'+REL']],['fornecedores','Por fornecedor',[A,F,'+REL']],['requisicoes','Requisições'],['nova','Nova requisição',[A,S_]]]],
   ['Financeiro', [['fechamentos','Fechamentos',[A,F]]]],
-  ['Recursos Humanos', [['horas','Horas extras Seatrade',[A,RH_]]]],
+  ['Recursos Humanos', [['horas','Horas extras Seatrade',[A,RH_,'+RH']]]],
   ['Cadastros', [['trabalhadores','Trabalhadores',[A,F]],['empresas','Empresas',[A,F]],['precos','Tabela de preços',[A,F]],['navios','Navios'],['armazens','Armazéns',[A]],['funcoes','Funções',[A]],['turnos','Turnos',[A]],['feriados','Feriados',[A,F]]]],
   ['Administração', [['usuarios','Usuários',[A]],['auditoria','Auditoria',[A,F]]]]
 ];
@@ -968,13 +971,13 @@ function alternarMenu(abrir){
   if (!abrir && v) v.remove();
 }
 const ROTAS = {
-  painel:{t:'Painel', p:[A,F], fn:() => vPainel()}, fornecedores:{t:'Requisições por fornecedor', p:[A,F], fn:() => vFornecedores()}, requisicoes:{t:'Requisições', fn:() => vRequisicoes()}, nova:{t:'Nova requisição', p:[A,S_], fn:() => vNova()},
+  painel:{t:'Painel', p:[A,F,'+REL'], fn:() => vPainel()}, fornecedores:{t:'Requisições por fornecedor', p:[A,F,'+REL'], fn:() => vFornecedores()}, requisicoes:{t:'Requisições', fn:() => vRequisicoes()}, nova:{t:'Nova requisição', p:[A,S_], fn:() => vNova()},
   fechamentos:{t:'Fechamentos', p:[A,F], fn:() => vFechamentos()},
   trabalhadores:{t:'Trabalhadores', p:[A,F], fn:() => vTrabalhadores()}, precos:{t:'Tabela de preços', p:[A,F], fn:() => vPrecos()},
   empresas:{t:'Empresas', p:[A,F], fn:() => vCrud('empresas')}, navios:{t:'Navios', fn:() => vCrud('navios')}, armazens:{t:'Armazéns', p:[A], fn:() => vCrud('armazens')},
   funcoes:{t:'Funções', p:[A], fn:() => vCrud('funcoes')}, turnos:{t:'Turnos', p:[A], fn:() => vCrud('turnos')}, feriados:{t:'Feriados', p:[A,F], fn:() => vCrud('feriados')},
   usuarios:{t:'Usuários', p:[A], fn:() => vUsuarios()}, auditoria:{t:'Auditoria', p:[A,F], fn:() => vAuditoria()},
-  horas:{t:'Horas extras Seatrade', p:[A,RH_], fn:() => vHoras()}
+  horas:{t:'Horas extras Seatrade', p:[A,RH_,'+RH'], fn:() => vHoras()}
 };
 async function rotear(){
   if (!ME) return;
@@ -1174,7 +1177,7 @@ async function vRequisicoes(){
     if (f.navio) rows = rows.filter(r => String(r.navio_id) === String(f.navio));
     if (f.minhas) rows = rows.filter(r => r.supervisor_id === ME.id);
     atual = rows;
-    const adm = veValores(), tot = rows.filter(r => r.status !== 'CANCELADA');
+    const adm = veCustos(), tot = rows.filter(r => r.status !== 'CANCELADA');
     const cartoes = `<div class="cards-req">${rows.map(r => `<a class="card-req" href="#req-${r.id}">
         <div class="l1"><span class="reqnum">${reqNum(r.id)}</span><span><span class="pill ${r.status}">${STATUS[r.status]}</span>${r.em_fechamento ? ' <span class="pill CONFERIDO">Fechada</span>' : ''}</span></div>
         <div class="l2">${esc(r.navio)}${r.viagem ? ` <span class="muted" style="font-weight:400">· ${esc(r.viagem)}</span>` : ''}</div>
@@ -1359,10 +1362,10 @@ async function vDetalhe(id){
       ${fechada ? `<div style="grid-column:1/-1"><dt>Financeiro</dt><dd>Incluída em fechamento${veValores() && fechIds.length ? ': ' + fechIds.map(f => `<a href="#fec-${f}" class="reqnum">${fecNum(f)}</a>`).join(', ') : ''}. Para alterar, o financeiro precisa desfazer o fechamento.</dd></div>` : ''}
     </dl></section>
     <section class="painel">
-      <div class="cab-p"><h2>Trabalhadores</h2><div class="totais"><span><b>${itens.length}</b> pessoas</span><span><b>${hh}</b> HH</span>${veValores() ? `<span>Total <b>${brl(total)}</b></span>` : ''}</div></div>
+      <div class="cab-p"><h2>Trabalhadores</h2><div class="totais"><span><b>${itens.length}</b> pessoas</span><span><b>${hh}</b> HH</span>${veCustos() ? `<span>Total <b>${brl(total)}</b></span>` : ''}</div></div>
       ${porFuncao.length ? porFuncao.map(([fu, l]) => `<div class="grupo-func"><h3>${esc(fu.nome)} · ${l.length}</h3><div class="lista-trab">${l.map(i => `
         <div class="trab"><div><div class="n">${i.por_funcao && !i.nome_trabalhador ? '<span class="muted" style="font-weight:400">Nome não informado</span>' : esc(i.trabalhador)}</div><div class="d">${esc(i.empresa)} · ${horarioTxt(i)}${i.por_funcao ? ' · por função' : ''}</div></div>
-        <div class="lado">${veValores() ? (byId('empresas', i.empresa_id).propria ? '<span class="muted" style="font-size:.85rem">próprio</span>' : `<span class="mono">${brl(i.valor)}</span>`) : ''}${editavel && i.por_funcao ? `<button class="btn peq" type="button" data-nome="${i.id}">${i.nome_trabalhador ? 'Alterar nome' : 'Pôr nome'}</button>` : ''}${editavel ? `<button class="btn peq perigo" type="button" data-rem="${i.id}" aria-label="Remover ${esc(i.trabalhador)}">Remover</button>` : ''}</div></div>`).join('')}</div></div>`).join('')
+        <div class="lado">${veCustos() ? (byId('empresas', i.empresa_id).propria ? '<span class="muted" style="font-size:.85rem">próprio</span>' : `<span class="mono">${brl(i.valor)}</span>`) : ''}${editavel && i.por_funcao ? `<button class="btn peq" type="button" data-nome="${i.id}">${i.nome_trabalhador ? 'Alterar nome' : 'Pôr nome'}</button>` : ''}${editavel ? `<button class="btn peq perigo" type="button" data-rem="${i.id}" aria-label="Remover ${esc(i.trabalhador)}">Remover</button>` : ''}</div></div>`).join('')}</div></div>`).join('')
         : '<div class="vazio">Nenhum trabalhador nesta requisição ainda.</div>'}
     </section>
     ${editavel ? '<section class="painel" id="d-add"></section>' : ''}`);
@@ -1522,11 +1525,11 @@ async function painelAdicionar(r, itens){
 /* ------------------------------ Exportação ------------------------------ */
 function exportarCSV(itens, nome){
   if (!itens.length) { toast('Nada para exportar nesse filtro.', 1); return; }
-  const adm = veValores();
-  const cab = ['Requisição','Data','Dia da semana','Tipo de dia','Turno','Horário próprio','Horas','Navio','Viagem','Armazém','Trabalhador','CNPJ MEI','Função','Empresa','Supervisor','Situação'].concat(adm ? ['Valor','Fechamento'] : []);
+  const adm = veValores(), custo = veCustos();
+  const cab = ['Requisição','Data','Dia da semana','Tipo de dia','Turno','Horário próprio','Horas','Navio','Viagem','Armazém','Trabalhador'].concat(adm ? ['CNPJ MEI'] : [], ['Função','Empresa','Supervisor','Situação'], custo ? ['Valor'] : [], adm ? ['Fechamento'] : []);
   const q = v => { let s = String(v ?? ''); if (/^[=+\-@\t\r]/.test(s) && isNaN(Number(s.replace(',', '.')))) s = "'" + s;  /* evita fórmula maliciosa ao abrir no Excel */ return /[;"\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
-  const linhas = [...itens].sort((a, b) => a.data.localeCompare(b.data) || a.requisicao_id - b.requisicao_id).map(i => [reqNum(i.requisicao_id), fdata(i.data), DIAS[dow(i.data)], TIPO_DIA[i.tipo_dia], i.turno, i.hora_inicio != null ? `${pad(i.hora_inicio)}h às ${pad(i.hora_fim)}h` : '', i.horas, i.navio, i.viagem, i.armazem, i.trabalhador, i.cnpj_mei, i.funcao, i.empresa, i.supervisor, STATUS[i.status]]
-    .concat(adm ? [Number(i.valor || 0).toFixed(2).replace('.', ','), i.fechamento_id ? fecNum(i.fechamento_id) : ''] : []).map(q).join(';'));
+  const linhas = [...itens].sort((a, b) => a.data.localeCompare(b.data) || a.requisicao_id - b.requisicao_id).map(i => [reqNum(i.requisicao_id), fdata(i.data), DIAS[dow(i.data)], TIPO_DIA[i.tipo_dia], i.turno, i.hora_inicio != null ? `${pad(i.hora_inicio)}h às ${pad(i.hora_fim)}h` : '', i.horas, i.navio, i.viagem, i.armazem, i.trabalhador]
+    .concat(adm ? [i.cnpj_mei] : [], [i.funcao, i.empresa, i.supervisor, STATUS[i.status]], custo ? [Number(i.valor || 0).toFixed(2).replace('.', ',')] : [], adm ? [i.fechamento_id ? fecNum(i.fechamento_id) : ''] : []).map(q).join(';'));
   const blob = new Blob(['﻿' + [cab.join(';')].concat(linhas).join('\r\n')], {type:'text/csv;charset=utf-8'});
   const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = nome; document.body.appendChild(a); a.click();
   setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
@@ -1696,7 +1699,7 @@ async function vUsuarios(){
   const us = await DB.list('usuarios', {order:'nome'});
   pagina('Usuários', 'Administradores aprovam e mantêm cadastros; supervisores lançam requisições; o financeiro fecha e paga os fornecedores', '<button class="btn primario" id="u-novo" type="button">Novo usuário</button>', `
     <div class="tab-wrap"><table class="tab"><thead><tr><th>Nome</th><th>E-mail</th><th>Perfil</th><th>Situação</th></tr></thead><tbody>
-    ${us.map(u => `<tr class="click" data-id="${esc(u.id)}"><td>${esc(u.nome)}${u.id === ME.id ? ' <span class="muted">(você)</span>' : ''}</td><td>${esc(u.email)}</td><td>${PERFIS[u.perfil] || u.perfil}</td>
+    ${us.map(u => `<tr class="click" data-id="${esc(u.id)}"><td>${esc(u.nome)}${u.id === ME.id ? ' <span class="muted">(você)</span>' : ''}</td><td>${esc(u.email)}</td><td>${PERFIS[u.perfil] || u.perfil}${u.acesso_relatorios ? ' <span class="tag">+ Relatórios</span>' : ''}${u.acesso_rh ? ' <span class="tag">+ RH</span>' : ''}</td>
       <td><span class="pill ${u.ativo ? 'APROVADA' : 'ABERTA'}">${u.ativo ? 'Ativo' : 'Aguardando liberação'}</span></td></tr>`).join('')}</tbody></table></div>`);
   const perfis = () => [['SUPERVISOR','Supervisor'],['FINANCEIRO','Financeiro'],['RH','Recursos Humanos'],['ADMIN','Administrador']];
   $('#u-novo').onclick = () => {
@@ -1707,7 +1710,9 @@ async function vUsuarios(){
   };
   $$('tr.click').forEach(tr => tr.onclick = () => {
     const u = us.find(x => String(x.id) === tr.dataset.id), eu = u.id === ME.id;
-    const cs = [{k:'nome',l:'Nome',req:1},{k:'perfil',l:'Perfil',type:'select',req:1,opts:perfis},{k:'ativo',l:'Acesso liberado',type:'bool'}];
+    const cs = [{k:'nome',l:'Nome',req:1},{k:'perfil',l:'Perfil',type:'select',req:1,opts:perfis},{k:'ativo',l:'Acesso liberado',type:'bool'},
+      {k:'acesso_relatorios',l:'Acesso extra: relatórios com valores (Painel e Por fornecedor, só leitura)',type:'bool'},
+      {k:'acesso_rh',l:'Acesso extra: Horas extras Seatrade (RH)',type:'bool'}];
     const m = modal('Editar usuário', `<p class="muted" style="margin:0">${esc(u.email)}</p>` + cs.map(f => campo(f, u[f.k])).join('')
       + (eu ? '<p class="muted" style="margin:0;font-size:.82rem">Para a sua própria senha, use "Trocar minha senha" no menu.</p>' : '<div><button class="btn" type="button" id="u-senha">Redefinir senha</button></div>'), {onOk: async fm => {
       const d = lerCampos(fm, cs); if (eu && (!d.ativo || d.perfil !== 'ADMIN')) throw new Error('Você não pode remover o seu próprio acesso de administrador.');

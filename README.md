@@ -30,8 +30,9 @@ Sistema web para supervisores informarem a mão de obra requisitada (por **navio
 15. **Funcionários próprios:** a empresa marcada como *Funcionários próprios* (a própria agência) tem seus colaboradores na lista de Trabalhadores. Na requisição eles aparecem em *Funcionários próprios*, em qualquer função (sem habilitação), também com horário digitado; entram sem valor, ficam fora do Painel de custo e não podem ir para fechamento. Conflito de turno vale normalmente. A requisição pode juntar terceiros e funcionários próprios. A lista de colaboradores é carregada por arquivo privado (nunca neste repositório).
 16. **Senhas:** cada usuário troca a própria senha em *Trocar minha senha* (no menu), informando a senha atual. O administrador pode redefinir a senha de outro usuário em *Usuários → (usuário) → Redefinir senha* (função `admin_definir_senha`, que só funciona para ADMIN).
 17. **Perfil RH e horas extras:** o perfil *Recursos Humanos* (e o administrador) acessa *Horas extras Seatrade*: para cada funcionário próprio, a jornada contratual (segunda a sexta, tabela `jornadas`, que só ADMIN e RH leem e alteram) e as horas das requisições no período de 16 a 15, separadas em normais, extra diurna 50%, extra noturna 50% (22h às 05h) e extra 100% (domingos e feriados). Sem jornada, todas as horas contam como extra. Exporta CSV. Próxima etapa: regras completas da planilha de horas extras do RH (prorrogação do noturno, valores, DSR e reflexos).
+18. **Acessos extras:** cada usuário tem um perfil principal e, em *Usuários → (usuário)*, o administrador pode marcar acessos que se somam a ele: *relatórios com valores* (`acesso_relatorios`: Painel e Por fornecedor, e o custo das requisições, só leitura; função `ve_custos`) e *Horas extras Seatrade* (`acesso_rh`: mesma regra do perfil RH, função `ve_horas_rh`). Os acessos extras não liberam tabela de preços, fechamentos, auditoria nem dados pessoais dos trabalhadores. Só o administrador altera usuários.
 
-**Por fornecedor (administrador e financeiro):** no menu *Operação → Por fornecedor*, escolha o período e a empresa (ou todas). Para cada fornecedor aparecem os navios e os locais onde trabalhou (requisições, diárias, HH e total) e a lista das requisições, com número, data, turno, navio, local, funções, situação, pessoas e valor. No *Painel*, clicar no nome da empresa em *Fechamento por fornecedor* abre essa consulta no mesmo período. Funcionários próprios não entram (não têm preço).
+**Por fornecedor (administrador, financeiro e quem tem o acesso extra de relatórios):** no menu *Operação → Por fornecedor*, escolha o período e a empresa (ou todas). Para cada fornecedor aparecem os navios e os locais onde trabalhou (requisições, diárias, HH e total) e a lista das requisições, com número, data, turno, navio, local, funções, situação, pessoas e valor. No *Painel*, clicar no nome da empresa em *Fechamento por fornecedor* abre essa consulta no mesmo período. Funcionários próprios não entram (não têm preço).
 
 **Concluir requisição:** no alto da tela da requisição, ao lado de *Voltar* (botão verde, aparece no rascunho aberto com pelo menos uma pessoa), o supervisor dono ou o administrador clica em *Concluir requisição*: o banco gera o número e a tela volta para *Nova requisição*. A requisição fica *Aberta* e continua podendo ser editada pela lista de *Requisições* até ser aprovada. O espelho PDF só aparece depois de concluída.
 
@@ -89,7 +90,7 @@ erDiagram
 | `vw_requisicoes`, `vw_itens`, `vw_fechamentos`, `vw_auditoria` | Visões para telas e relatórios (valores só para ADMIN e FINANCEIRO). |
 | `gerar_fechamento()`, `desfazer_fechamento()` | Funções que criam e desfazem fechamentos (a tela chama via API). |
 
-O arquivo `supabase/schema.sql` cria tudo isso e carrega só dados genéricos (funções, turnos, armazéns e feriados nacionais). Fornecedores e preços entram pelo arquivo privado de carga.
+O arquivo `schema.sql` cria tudo isso e carrega só dados genéricos (funções, turnos, armazéns e feriados nacionais). Fornecedores e preços entram pelo arquivo privado de carga.
 
 ---
 
@@ -98,7 +99,7 @@ O arquivo `supabase/schema.sql` cria tudo isso e carrega só dados genéricos (f
 ### 3.1 Supabase (banco + login)
 
 1. Crie uma conta em <https://supabase.com> e um projeto novo (região *South America (São Paulo)*).
-2. Menu **SQL Editor** → *New query* → cole todo o conteúdo de `supabase/schema.sql` → **Run**.
+2. Menu **SQL Editor** → *New query* → cole todo o conteúdo de `schema.sql` → **Run**.
    - Em seguida, numa nova query, cole o arquivo privado `privado/carga_dados.sql` (fornecedores e preços) → **Run**. Ele fica só no seu computador.
 3. Menu **Authentication → Sign In / Providers → Email**:
    - deixe **Allow new users to sign up** *ligado* (contas novas nascem bloqueadas; só funcionam depois que o administrador libera);
@@ -169,7 +170,7 @@ Resultado: Painel → "Custo por navio" → leva o custo de mão de obra para o 
 
 **Proteções (revisão de 23/11/2026):**
 - Toda tabela tem RLS; visitante sem login (`anon`) não tem nenhuma permissão em tabelas, visões, sequências ou funções do sistema. Ninguém pela API executa `TRUNCATE`.
-- Valores em R$ (preços, itens, fechamentos, auditoria): só ADMIN e FINANCEIRO. Jornadas e horas extras: só ADMIN e RH.
+- Valores em R$ (preços, itens, fechamentos, auditoria): só ADMIN e FINANCEIRO; o custo das requisições (itens e totais) também para quem tem o acesso extra de relatórios. Jornadas e horas extras: só ADMIN, RH e quem tem o acesso extra de RH.
 - Dados pessoais do trabalhador (CPF, PIX, telefone, MEI): só ADMIN e FINANCEIRO; os outros perfis leem `vw_trabalhadores` (id, nome, empresa, situação).
 - Usuário recém-cadastrado nasce bloqueado e não lê nada até o administrador liberar.
 - O site tem CSP (só carrega scripts dos CDNs usados e só se comunica com o Supabase do projeto) e SRI nos scripts externos (arquivo adulterado no CDN é recusado).

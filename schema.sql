@@ -38,6 +38,9 @@ create table if not exists public.usuarios (
 alter table public.usuarios drop constraint if exists usuarios_perfil_check;
 alter table public.usuarios add constraint usuarios_perfil_check
   check (perfil in ('ADMIN','SUPERVISOR','FINANCEIRO','RH'));
+-- Acessos extras, somados ao perfil principal (marcados pelo admin em Usuários)
+alter table public.usuarios add column if not exists acesso_relatorios boolean not null default false;  -- Painel e Por fornecedor com valores (só leitura)
+alter table public.usuarios add column if not exists acesso_rh         boolean not null default false;  -- Horas extras Seatrade e jornadas
 
 -- Cria o registro em usuarios sempre que alguém é criado no Auth
 create or replace function public.fn_novo_usuario()
@@ -70,10 +73,18 @@ create or replace function public.ve_valores()
 returns boolean language sql stable security definer set search_path = public as $$
   select coalesce(public.meu_perfil() in ('ADMIN','FINANCEIRO'), false)
 $$;
--- Quem vê as horas e jornadas dos funcionários próprios (ADMIN e RH)
+-- Quem vê o custo das requisições nos relatórios: ADMIN, FINANCEIRO e quem tem o acesso extra "relatórios".
+-- Não libera preços, fechamentos, auditoria nem dados pessoais dos trabalhadores (esses seguem ve_valores).
+create or replace function public.ve_custos()
+returns boolean language sql stable security definer set search_path = public as $$
+  select coalesce((select u.perfil in ('ADMIN','FINANCEIRO') or u.acesso_relatorios
+                     from public.usuarios u where u.id = auth.uid() and u.ativo), false)
+$$;
+-- Quem vê as horas e jornadas dos funcionários próprios: ADMIN, RH e quem tem o acesso extra "RH"
 create or replace function public.ve_horas_rh()
 returns boolean language sql stable security definer set search_path = public as $$
-  select coalesce(public.meu_perfil() in ('ADMIN','RH'), false)
+  select coalesce((select u.perfil in ('ADMIN','RH') or u.acesso_rh
+                     from public.usuarios u where u.id = auth.uid() and u.ativo), false)
 $$;
 -- Quem lança requisições (ADMIN e SUPERVISOR)
 create or replace function public.pode_requisitar()
@@ -696,7 +707,7 @@ select r.id, r.data, r.tipo_dia, r.status, r.observacao, r.motivo_cancelamento,
        r.aprovado_em, ua.nome as aprovado_por_nome,
        r.criado_em,
        (select count(*) from public.requisicao_itens i where i.requisicao_id = r.id)::int as qtd_trabalhadores,
-       case when public.ve_valores()
+       case when public.ve_custos()
             then (select coalesce(sum(i.valor_unitario),0) from public.requisicao_itens i where i.requisicao_id = r.id)
        end as valor_total,
        exists (select 1 from public.requisicao_itens i where i.requisicao_id = r.id and i.fechamento_id is not null) as em_fechamento,
@@ -721,7 +732,7 @@ select i.id, i.requisicao_id, r.data, r.tipo_dia, r.status,
        i.funcao_id, f.nome as funcao,
        i.empresa_id, e.nome as empresa,
        r.supervisor_id, u.nome as supervisor,
-       case when public.ve_valores() then i.valor_unitario end as valor,
+       case when public.ve_custos() then i.valor_unitario end as valor,
        i.observacao,
        i.fechamento_id,
        case when r.numero is not null then r.numero_ano || '/' || lpad(r.numero::text, 4, '0') end as numero_fmt,
@@ -921,7 +932,7 @@ begin
   end loop;
 end $$;
 grant execute on function public.meu_perfil(), public.is_admin(), public.is_ativo(), public.ve_valores(),
-  public.pode_requisitar(), public.ve_horas_rh(), public.fn_tipo_dia(date), public.fn_inicio_operacional(int),
+  public.pode_requisitar(), public.ve_horas_rh(), public.ve_custos(), public.fn_tipo_dia(date), public.fn_inicio_operacional(int),
   public.gerar_fechamento(bigint, date, date), public.desfazer_fechamento(bigint), public.admin_definir_senha(uuid, text)
   to authenticated;
 
